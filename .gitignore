@@ -2,3 +2,5 @@
 /static
 .database/
 config.toml
+
+.DS_Store
