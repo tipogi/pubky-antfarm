@@ -1,0 +1,19 @@
+tracing = true
+
+[postgres]
+url = "postgres://postgres:postgres@localhost:5432/postgres"
+
+[[homeservers]]
+label = "hs2"
+seed = 1    # expands to [1; 32]
+
+[[homeservers]]
+label = "hs3"
+seed = 2    # expands to [2; 32]
+
+[simulator]
+interval_secs = 20
+users_per_tick = [0, 5]
+posts_per_tick = [0, 10]
+tags_per_tick = [0, 10]
+follows_per_tick = [0, 5]
