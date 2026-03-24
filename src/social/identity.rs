@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use pubky_testnet::pubky::{Keypair, PublicKey};
 use rand::RngExt as _;
 
-const USER_INDEX_START: usize = 24;
-
 const ADJECTIVES: &[&str] = &[
     "swift", "bright", "silent", "frozen", "blazing",
     "cosmic", "hidden", "rustic", "golden", "nimble",
@@ -45,9 +43,9 @@ pub struct UserKeys {
 }
 
 impl UserKeys {
-    pub fn new() -> Self {
+    pub fn new(user_index_start: usize) -> Self {
         Self {
-            next_index: USER_INDEX_START,
+            next_index: user_index_start,
             keys: HashMap::new(),
         }
     }
@@ -61,7 +59,11 @@ impl UserKeys {
     }
 
     pub fn keypair_at(index: usize) -> Keypair {
-        crate::keygen::keypair_from_index(index).1
+        crate::commands::keygen::keypair_from_index(index).1
+    }
+
+    pub fn get_user(&self, index: usize) -> Option<PublicKey> {
+        self.keys.get(&index).cloned()
     }
 
     pub fn random_user(&self) -> Option<(usize, PublicKey)> {

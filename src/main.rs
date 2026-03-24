@@ -1,7 +1,7 @@
+mod commands;
 mod config;
 mod db;
 mod homeservers;
-mod keygen;
 mod simulator;
 mod social;
 mod testnet;
@@ -15,12 +15,19 @@ use config::{Cli, AntfarmConfig, Command};
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    if let Some(Command::Keygen { index }) = cli.command {
-        keygen::print_keygen(index);
-        return Ok(());
+    match cli.command {
+        Some(Command::Keygen { index }) => {
+            commands::keygen::print_keygen(index);
+            Ok(())
+        }
+        Some(Command::List) => {
+            commands::list::run(&cli.config).await
+        }
+        Some(Command::Seed { ref action }) => {
+            commands::seed::run(action).await
+        }
+        None => run(&cli.config, cli.listen_only).await,
     }
-
-    run(&cli.config, cli.listen_only).await
 }
 
 async fn run(config_path: &str, listen_only: bool) -> anyhow::Result<()> {
@@ -67,7 +74,7 @@ async fn run(config_path: &str, listen_only: bool) -> anyhow::Result<()> {
     } else {
         println!("\n{}", "▸ Writing test data".cyan().bold());
         let sdk = testnet.sdk()?;
-        let mut user_keys = social::UserKeys::new();
+        let mut user_keys = social::UserKeys::new(config.user_index_start());
         let mut initial_events = Vec::new();
         let mut initial_posts = Vec::new();
 

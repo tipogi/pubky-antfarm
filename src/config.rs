@@ -25,12 +25,56 @@ pub enum Command {
         #[arg(long)]
         index: usize,
     },
+    /// Create a cross-homeserver social reference (follow, tag, or mention)
+    Seed {
+        #[command(subcommand)]
+        action: SeedAction,
+    },
+    /// List all homeservers and their initial users
+    List,
+}
+
+#[derive(Subcommand)]
+pub enum SeedAction {
+    /// User --from follows user --to
+    Follow {
+        /// Index of the user performing the follow (>= max_homeservers)
+        #[arg(long)]
+        from: usize,
+        /// Index of the user being followed (>= max_homeservers)
+        #[arg(long)]
+        to: usize,
+    },
+    /// User --from tags user --to
+    Tag {
+        /// Index of the user creating the tag (>= max_homeservers)
+        #[arg(long)]
+        from: usize,
+        /// Index of the user being tagged (>= max_homeservers)
+        #[arg(long)]
+        to: usize,
+        /// Tag label
+        #[arg(long, default_value = "interesting")]
+        label: String,
+    },
+    /// User --from creates a post mentioning user(s) --to
+    Mention {
+        /// Index of the user creating the post (>= max_homeservers)
+        #[arg(long)]
+        from: usize,
+        /// Comma-separated indices of mentioned users (>= max_homeservers)
+        #[arg(long, value_delimiter = ',')]
+        to: Vec<usize>,
+    },
 }
 
 #[derive(Deserialize)]
 pub struct AntfarmConfig {
     #[serde(default = "default_true")]
     pub tracing: bool,
+    /// Maximum number of homeservers (also the starting index for user keys).
+    #[serde(default = "AntfarmConfig::default_max_homeservers")]
+    pub max_homeservers: usize,
     #[serde(default)]
     pub postgres: PostgresConfig,
     #[serde(default)]
@@ -123,6 +167,7 @@ impl Default for AntfarmConfig {
     fn default() -> Self {
         Self {
             tracing: true,
+            max_homeservers: Self::default_max_homeservers(),
             postgres: PostgresConfig::default(),
             homeservers: vec![
                 HomeserverEntry {
@@ -140,6 +185,15 @@ impl Default for AntfarmConfig {
 }
 
 impl AntfarmConfig {
+    fn default_max_homeservers() -> usize {
+        24
+    }
+
+    /// User key indices start right after the homeserver-reserved range.
+    pub fn user_index_start(&self) -> usize {
+        self.max_homeservers
+    }
+
     pub fn load(path: &str) -> anyhow::Result<Self> {
         if !Path::new(path).exists() {
             let default_exists = Path::new("config.default.toml").exists();

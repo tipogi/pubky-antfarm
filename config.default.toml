@@ -1,4 +1,5 @@
 tracing = true
+max_homeservers = 24   # also the starting index for user keys
 
 [postgres]
 url = "postgres://postgres:postgres@localhost:5432/postgres"

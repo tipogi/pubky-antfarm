@@ -26,13 +26,33 @@ Start the network without writing any data or running the simulator:
 cargo run -- --listen-only
 ```
 
-Generate a deterministic keypair and 12-word mnemonic from a user index:
+## Commands
+
+### `keygen`
+
+Generate a deterministic keypair and 12-word mnemonic from a user index. The same index always produces the same mnemonic and public key, which is useful for hardcoding known pubkeys in external services during development.
 
 ```bash
 cargo run -- keygen --index 24
 ```
 
-The same index always produces the same mnemonic and public key, which is useful for hardcoding known pubkeys in external services during development.
+### `list`
+
+Print all homeservers and their signed-up users by querying a running antfarm:
+
+```bash
+cargo run -- list
+```
+
+### `seed`
+
+Create cross-homeserver social references against a running antfarm. User indices must be `>= max_homeservers` (default 24).
+
+```bash
+cargo run -- seed follow  --from 24 --to 25
+cargo run -- seed tag     --from 24 --to 25 --label cool
+cargo run -- seed mention --from 24 --to 25,26
+```
 
 ## Configuration
 
@@ -45,6 +65,7 @@ cp config.default.toml config.toml
 | Key | Default | Description |
 |-----|---------|-------------|
 | `tracing` | `true` | Enable tracing subscriber. When `true`, logs are controlled by `RUST_LOG` or a built-in default filter |
+| `max_homeservers` | `24` | Maximum homeserver slots and the starting index for user key derivation |
 | `[postgres] url` | `postgres://…localhost:5432/postgres` | Postgres connection string |
 | `[[homeservers]]` | hs2 (seed 1), hs3 (seed 2) | Swarm homeservers beyond the built-in hs1 |
 | `[simulator] interval_secs` | `20` | Seconds between simulator ticks |
