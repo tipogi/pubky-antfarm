@@ -71,6 +71,17 @@ async fn create_database(pool: &PgPool, name: &str) -> bool {
     }
 }
 
+pub async fn create_single_database(pg_url: &str, label: &str) -> anyhow::Result<()> {
+    let pool = connect(pg_url).await?;
+    let name = db_name(label);
+    if !create_database(&pool, &name).await {
+        pool.close().await;
+        return Err(anyhow::anyhow!("failed to create database: {name}"));
+    }
+    pool.close().await;
+    Ok(())
+}
+
 pub async fn setup_databases(pg_url: &str, labels: &[&str]) -> anyhow::Result<()> {
     let pool = connect(pg_url).await?;
     let mut errors: Vec<String> = Vec::new();

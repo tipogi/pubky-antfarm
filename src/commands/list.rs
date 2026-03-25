@@ -12,6 +12,7 @@ const SPINNER: &[&str] = &["◰", "◳", "◲", "◱"];
 
 struct Homeserver {
     label: String,
+    public_key: String,
     users: Vec<User>,
 }
 
@@ -33,12 +34,15 @@ pub async fn run(config_path: &str) -> anyhow::Result<()> {
 
     let mut hs_map: HashMap<String, Homeserver> = HashMap::new();
 
-    let hs1_pk = Keypair::from_secret(&[0; 32]).public_key();
-    hs_map.insert(hs1_pk.z32(), Homeserver { label: "hs1".into(), users: Vec::new() });
-
-    for entry in &config.homeservers {
-        let pk = Keypair::from_secret(&entry.seed_bytes()).public_key();
-        hs_map.insert(pk.z32(), Homeserver { label: entry.label.clone(), users: Vec::new() });
+    for seed in 0..config.max_homeservers as u8 {
+        let pk = Keypair::from_secret(&[seed; 32]).public_key();
+        let label = if seed == 0 {
+            "hs1".to_string()
+        } else {
+            format!("hs{}", seed + 1)
+        };
+        let z32 = pk.z32();
+        hs_map.insert(z32.clone(), Homeserver { label, public_key: z32, users: Vec::new() });
     }
 
     let user_index_start = config.user_index_start();
@@ -87,13 +91,14 @@ pub async fn run(config_path: &str) -> anyhow::Result<()> {
         index - 1
     );
 
-    let mut ordered: Vec<_> = hs_map.into_values().collect();
+    let mut ordered: Vec<_> = hs_map.into_values().filter(|hs| !hs.users.is_empty()).collect();
     ordered.sort_by(|a, b| a.label.cmp(&b.label));
 
     for hs in &ordered {
         println!(
-            "\n  {} ({} users)",
+            "\n  {} {} ({} users)",
             hs.label.white().bold(),
+            hs.public_key.dimmed(),
             hs.users.len()
         );
         for user in &hs.users {

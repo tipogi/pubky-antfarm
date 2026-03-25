@@ -15,6 +15,17 @@ fn connect_to_testnet() -> anyhow::Result<Pubky> {
 }
 
 pub async fn run(action: &SeedAction) -> anyhow::Result<()> {
+    match action {
+        SeedAction::User {
+            index,
+            hs,
+            profile,
+        } => {
+            return seed_user(*index, *hs, *profile).await;
+        }
+        _ => {}
+    }
+
     let sdk = connect_to_testnet()
         .context("seed command requires a running antfarm (cargo run)")?;
 
@@ -24,6 +35,7 @@ pub async fn run(action: &SeedAction) -> anyhow::Result<()> {
         SeedAction::Follow { from, to } => seed_follow(&sdk, *from, *to).await,
         SeedAction::Tag { from, to, label } => seed_tag(&sdk, *from, *to, label).await,
         SeedAction::Mention { from, to } => seed_mention(&sdk, *from, to).await,
+        SeedAction::User { .. } => unreachable!(),
     }
 }
 
@@ -105,6 +117,35 @@ async fn seed_mention(sdk: &Pubky, from: usize, to_indices: &[usize]) -> anyhow:
         author_pk.z32(),
         post_id
     );
+
+    Ok(())
+}
+
+async fn seed_user(index: Option<usize>, hs: u8, profile: bool) -> anyhow::Result<()> {
+    println!(
+        "\n{}",
+        "▸ Creating user via control socket".cyan().bold()
+    );
+
+    let addr = crate::config::DEFAULT_CONTROL_ADDR;
+    let resp = crate::control::client::send_user(addr, index.map(|i| i as u8), hs, profile)
+        .await
+        .context("failed to create user — is antfarm running?")?;
+
+    if resp.ok {
+        println!("\n{}", "  Result:".white().bold());
+        println!("  {} user", "action:".dimmed());
+        println!("  {}  {}", "hs:".dimmed(), resp.label.as_deref().unwrap_or("?"));
+        if let Some(pk) = &resp.public_key {
+            println!("  {}  {}", "pk:".dimmed(), pk);
+        }
+        if let Some(msg) = &resp.message {
+            println!("  {} {}", "status:".dimmed(), msg.green());
+        }
+    } else {
+        let err = resp.error.as_deref().unwrap_or("unknown error");
+        println!("  {} {}", "error:".red().bold(), err);
+    }
 
     Ok(())
 }

@@ -32,6 +32,36 @@ pub enum Command {
     },
     /// List all homeservers and their initial users
     List,
+    /// Create, seed, or stop a homeserver on a running antfarm
+    Homeserver {
+        /// Control socket address
+        #[arg(long, default_value = DEFAULT_CONTROL_ADDR)]
+        addr: String,
+        #[command(subcommand)]
+        action: HomeserverAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum HomeserverAction {
+    /// Create a homeserver (joins DHT, no simulator activity)
+    Create {
+        /// Seed index for the homeserver (1-255, label will be hs{index+1})
+        #[arg(long)]
+        index: u8,
+    },
+    /// Add a created homeserver to the simulator rotation
+    Seed {
+        /// Seed index of the homeserver to seed
+        #[arg(long)]
+        index: u8,
+    },
+    /// Remove a homeserver from the simulator rotation (it stays running)
+    Stop {
+        /// Seed index of the homeserver to stop
+        #[arg(long)]
+        index: u8,
+    },
 }
 
 #[derive(Subcommand)]
@@ -66,6 +96,18 @@ pub enum SeedAction {
         #[arg(long, value_delimiter = ',')]
         to: Vec<usize>,
     },
+    /// Create a user on a specific homeserver
+    User {
+        /// User index to derive the keypair from (auto-assigned if omitted)
+        #[arg(long)]
+        index: Option<usize>,
+        /// Homeserver seed index (0 for hs1, 1 for hs2, etc.)
+        #[arg(long)]
+        hs: u8,
+        /// Also write a profile (profile.json with avatar)
+        #[arg(long)]
+        profile: bool,
+    },
 }
 
 #[derive(Deserialize)]
@@ -75,6 +117,9 @@ pub struct AntfarmConfig {
     /// Maximum number of homeservers (also the starting index for user keys).
     #[serde(default = "AntfarmConfig::default_max_homeservers")]
     pub max_homeservers: usize,
+    /// Address for the control socket (TCP).
+    #[serde(default = "AntfarmConfig::default_control_addr")]
+    pub control_addr: String,
     #[serde(default)]
     pub postgres: PostgresConfig,
     #[serde(default)]
@@ -168,6 +213,7 @@ impl Default for AntfarmConfig {
         Self {
             tracing: true,
             max_homeservers: Self::default_max_homeservers(),
+            control_addr: Self::default_control_addr(),
             postgres: PostgresConfig::default(),
             homeservers: vec![
                 HomeserverEntry {
@@ -184,9 +230,15 @@ impl Default for AntfarmConfig {
     }
 }
 
+pub const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:6300";
+
 impl AntfarmConfig {
     fn default_max_homeservers() -> usize {
         24
+    }
+
+    fn default_control_addr() -> String {
+        DEFAULT_CONTROL_ADDR.into()
     }
 
     /// User key indices start right after the homeserver-reserved range.

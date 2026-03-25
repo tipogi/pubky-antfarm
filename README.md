@@ -44,9 +44,46 @@ Print all homeservers and their signed-up users by querying a running antfarm:
 cargo run -- list
 ```
 
+### `homeserver`
+
+Create, seed, or stop homeservers on a running antfarm -- no restart needed.
+
+```bash
+cargo run -- homeserver create --index 3   # create hs4 (dormant, no events)
+cargo run -- homeserver seed   --index 3   # add hs4 to simulator rotation
+cargo run -- homeserver stop   --index 3   # remove hs4 from simulator
+cargo run -- homeserver seed   --index 3   # resume hs4 in simulator
+```
+
+**create** creates `hs{index+1}` (seed `[index; 32]`) with database `pubky_antfarm_hs{index+1}` and joins the DHT. The homeserver is reachable but the simulator does not write to it yet.
+
+**seed** adds a created homeserver to the simulator rotation. The simulator begins placing users, posts, tags, and follows on it. Can also resume a stopped homeserver.
+
+**stop** removes the homeserver from the simulator rotation. It stays running and its users remain reachable via DHT -- it just stops receiving new simulated activity.
+
+The index must be 1-23 (0 is reserved for the built-in hs1, max is `max_homeservers - 1`). Commands communicate with the running antfarm via a TCP admin socket on `127.0.0.1:6300`.
+
 ### `seed`
 
-Create cross-homeserver social references against a running antfarm. User indices must be `>= max_homeservers` (default 24).
+Create specific users or cross-homeserver social references against a running antfarm.
+
+#### `seed user`
+
+Create a user on a specific homeserver via the control socket. The simulator registry is updated so subsequent ticks know about the user.
+
+```bash
+cargo run -- seed user --hs 0                          # auto-assign index, signup only on hs1
+cargo run -- seed user --hs 3 --profile                # auto-assign index, signup + profile on hs4
+cargo run -- seed user --index 24 --hs 3 --profile     # explicit index 24, signup + profile on hs4
+```
+
+When `--index` is omitted, the server auto-assigns the next available user index from the simulator registry. When provided, the given index is used (useful for deterministic keypairs via `keygen`).
+
+Without `--profile`, only the signup is performed. With `--profile`, a `profile.json` (with avatar) is also written to the homeserver.
+
+#### `seed follow` / `seed tag` / `seed mention`
+
+Create cross-homeserver social references. User indices must be `>= max_homeservers` (default 24).
 
 ```bash
 cargo run -- seed follow  --from 24 --to 25
@@ -105,6 +142,7 @@ Each homeserver publishes a pkarr `SignedPacket` to the DHT so any client can di
 |-----------|---------|----------|
 | DHT bootstrap | `localhost:6881` | UDP (Mainline DHT) |
 | Pkarr relay | `http://localhost:15411` | HTTP |
+| Admin socket | `127.0.0.1:6300` | TCP (JSON-line) |
 | hs1 HTTP | `http://localhost:6286` | HTTP (fixed) |
 | hs2 / hs3 HTTP | ephemeral ports | HTTP (discover via DHT) |
 
@@ -120,7 +158,7 @@ Same seeds produce the same public keys every run, so external services can hard
 
 ### Adding Homeservers
 
-Append an entry to the `[[homeservers]]` array in `config.toml`:
+**At startup** -- append an entry to the `[[homeservers]]` array in `config.toml`:
 
 ```toml
 [[homeservers]]
@@ -129,6 +167,16 @@ seed = 3
 ```
 
 The label drives the database name (`pubky_antfarm_hs4`) and the seed produces a deterministic keypair. Everything else -- database creation, pkarr publishing, DHT registration -- happens automatically.
+
+**At runtime** -- use the `homeserver` command to create and control homeservers on a running antfarm:
+
+```bash
+cargo run -- homeserver create --index 3   # create hs4 (dormant)
+cargo run -- homeserver seed   --index 3   # start simulator activity
+cargo run -- homeserver stop   --index 3   # pause simulator activity
+```
+
+See the [`homeserver` command](#homeserver) for details.
 
 ## Database Lifecycle
 

@@ -62,6 +62,13 @@ impl UserKeys {
         crate::commands::keygen::keypair_from_index(index).1
     }
 
+    pub fn register_at(&mut self, index: usize, pk: PublicKey) {
+        self.keys.insert(index, pk);
+        if index >= self.next_index {
+            self.next_index = index + 1;
+        }
+    }
+
     pub fn get_user(&self, index: usize) -> Option<PublicKey> {
         self.keys.get(&index).cloned()
     }

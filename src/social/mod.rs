@@ -16,7 +16,9 @@ pub(crate) use follow::create as create_follow;
 pub(crate) use mention::create as create_mention;
 pub(crate) use post::create as create_post;
 pub(crate) use post::random_content;
+pub(crate) use profile::signup;
 pub(crate) use profile::signup_and_write;
+pub(crate) use profile::write_profile;
 pub(crate) use tag::create as create_tag;
 pub(crate) use tag::random_label as random_tag_label;
 
