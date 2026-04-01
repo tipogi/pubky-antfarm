@@ -92,7 +92,7 @@ pub async fn tick(
         let tag_user: bool = rng.random();
         let target_uri = if tag_user {
             if let Some((_, target_pk)) = registry.user_keys.random_user() {
-                format!("pubky://{}", target_pk.z32())
+                format!("pubky://{}/pub/pubky.app/profile.json", target_pk.z32())
             } else {
                 continue;
             }

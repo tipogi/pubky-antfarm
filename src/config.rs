@@ -87,6 +87,21 @@ pub enum SeedAction {
         #[arg(long, default_value = "interesting")]
         label: String,
     },
+    /// Tag an arbitrary URI under a custom app namespace
+    TagResource {
+        /// Index of the user creating the tag (>= max_homeservers)
+        #[arg(long)]
+        from: usize,
+        /// Target URI to tag (any valid URI, e.g. https://example.com/page)
+        #[arg(long)]
+        target: String,
+        /// Tag label
+        #[arg(long)]
+        label: String,
+        /// App path segment (e.g. "mapky" writes to /pub/mapky/tags/{id})
+        #[arg(long)]
+        app: String,
+    },
     /// User --from creates a post mentioning user(s) --to
     Mention {
         /// Index of the user creating the post (>= max_homeservers)

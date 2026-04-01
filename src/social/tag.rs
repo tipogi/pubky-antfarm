@@ -30,6 +30,14 @@ fn build_for_uri(uri: &str, label: &str) -> anyhow::Result<Writable> {
     Ok(Writable { path, json })
 }
 
+fn build_for_app(uri: &str, label: &str, app: &str) -> anyhow::Result<Writable> {
+    let tag = PubkyAppTag::new(uri.to_string(), label.into());
+    let id = tag.create_id();
+    let path = format!("/pub/{app}/tags/{id}");
+    let json = serde_json::to_string(&tag)?;
+    Ok(Writable { path, json })
+}
+
 pub(crate) async fn create(
     sdk: &Pubky,
     keypair: Keypair,
@@ -45,6 +53,26 @@ pub(crate) async fn create(
     let storage = session.storage();
 
     common::put(&storage, &build_for_uri(target_uri, tag_label)?, &label, &z32).await?;
+
+    Ok(())
+}
+
+pub(crate) async fn create_for_app(
+    sdk: &Pubky,
+    keypair: Keypair,
+    target_uri: &str,
+    tag_label: &str,
+    app: &str,
+) -> anyhow::Result<()> {
+    let signer = sdk.signer(keypair);
+    let user_pk = signer.public_key();
+    let z32 = user_pk.z32();
+    let label = "[sim]".dimmed().to_string();
+
+    let session = signer.signin().await?;
+    let storage = session.storage();
+
+    common::put(&storage, &build_for_app(target_uri, tag_label, app)?, &label, &z32).await?;
 
     Ok(())
 }

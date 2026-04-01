@@ -91,6 +91,21 @@ cargo run -- seed tag     --from 24 --to 25 --label cool
 cargo run -- seed mention --from 24 --to 25,26
 ```
 
+#### `seed tag-resource`
+
+Tag an arbitrary URI under a custom app namespace. All four flags are required.
+
+```bash
+cargo run -- seed tag-resource --from 24 --target "https://example.com/article?q=test" --label example --app sandbox
+```
+
+This writes a `PubkyAppTag` to `/pub/{app}/tags/{tag_id}` on the tagger's homeserver, where `tag_id` is derived from the target URI and label. The target can be any valid URI (HTTP URLs, pubky URIs, etc.).
+
+```bash
+cargo run -- seed tag-resource --from 25 --target "https://en.wikipedia.org/wiki/Bitcoin" --label reference --app wiki
+cargo run -- seed tag-resource --from 26 --target "https://github.com/pubky/pubky-core" --label opensource --app github
+```
+
 ## Configuration
 
 A `config.toml` is required. Copy the default to get started:

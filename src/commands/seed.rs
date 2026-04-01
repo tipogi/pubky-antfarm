@@ -34,6 +34,9 @@ pub async fn run(action: &SeedAction) -> anyhow::Result<()> {
     match action {
         SeedAction::Follow { from, to } => seed_follow(&sdk, *from, *to).await,
         SeedAction::Tag { from, to, label } => seed_tag(&sdk, *from, *to, label).await,
+        SeedAction::TagResource { from, target, label, app } => {
+            seed_tag_resource(&sdk, *from, target, label, app).await
+        }
         SeedAction::Mention { from, to } => seed_mention(&sdk, *from, to).await,
         SeedAction::User { .. } => unreachable!(),
     }
@@ -68,7 +71,7 @@ async fn seed_tag(sdk: &Pubky, from: usize, to: usize, label: &str) -> anyhow::R
     let (_, to_kp) = keypair_from_index(to);
     let from_pk = from_kp.public_key();
     let to_pk = to_kp.public_key();
-    let target_uri = format!("pubky://{}", to_pk.z32());
+    let target_uri = format!("pubky://{}/pub/pubky.app/profile.json", to_pk.z32());
 
     social::create_tag(sdk, from_kp, &target_uri, label)
         .await
@@ -79,6 +82,22 @@ async fn seed_tag(sdk: &Pubky, from: usize, to: usize, label: &str) -> anyhow::R
     println!("  {} user {} ({})", "from:".dimmed(), from, from_pk.z32());
     println!("  {}   user {} ({})", "to:".dimmed(), to, to_pk.z32());
     println!("  {} {}", "target:".dimmed(), target_uri);
+
+    Ok(())
+}
+
+async fn seed_tag_resource(sdk: &Pubky, from: usize, target: &str, label: &str, app: &str) -> anyhow::Result<()> {
+    let (_, from_kp) = keypair_from_index(from);
+    let from_pk = from_kp.public_key();
+
+    social::create_tag_for_app(sdk, from_kp, target, label, app)
+        .await
+        .context(format!("failed to create tag-resource from user {from} — is antfarm running?"))?;
+
+    println!("\n{}", "  Seed result:".white().bold());
+    println!("  {} tag-resource (label: {}, app: {})", "action:".dimmed(), label.yellow(), app.cyan());
+    println!("  {} user {} ({})", "from:".dimmed(), from, from_pk.z32());
+    println!("  {} {}", "target:".dimmed(), target);
 
     Ok(())
 }
