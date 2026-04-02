@@ -4,6 +4,14 @@ Local testnet with simulated social activity for testing Pubky services. Spins u
 
 ## Usage
 
+Before running, export the `TEST_PUBKY_CONNECTION_STRING` in your terminal (use the values from the .env file)
+
+```bash
+TEST_PUBKY_CONNECTION_STRING=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}?pubky-test=true
+```
+
+Then, run:
+
 ```bash
 cargo run
 ```
