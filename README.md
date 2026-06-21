@@ -1,36 +1,52 @@
 # pubky-antfarm
 
+<p align="center">
+  <img src="assets/antfarm-logo.svg" alt="pubky-antfarm logo" width="120" />
+</p>
+
 Local testnet with simulated social activity for testing Pubky services. Spins up an isolated DHT network with multiple homeservers and a continuous simulator generating users, posts, and tags -- designed for testing Nexus against a decentralized environment with realistic cross-homeserver activity.
 
-## Usage
+## Quick start
 
-Before running, export the `TEST_PUBKY_CONNECTION_STRING` in your terminal (use the values from the .env file)
+Prerequisites:
 
-```bash
-TEST_PUBKY_CONNECTION_STRING=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}?pubky-test=true
-```
-
-Then, run:
+- **Rust** (stable) + Cargo
+- **Node.js** 18+ and npm (to build the dashboard)
+- A running **PostgreSQL** instance reachable by the connection string in your config
 
 ```bash
+# 1. Create your config
+cp config.default.toml config.toml
+# edit [postgres] url to match your Postgres, or export TEST_PUBKY_CONNECTION_STRING
+
+# 2. Build the dashboard (one-time, and after any frontend change)
+cd dashboard && npm install && npm run build && cd ..
+
+# 3. Run the antfarm (DHT + homeservers + simulator + dashboard)
 cargo run
 ```
 
-Use a custom config file:
+Then open the dashboard at **http://127.0.0.1:6400**.
+
+> The dashboard fetches user profiles, avatars, and tags directly from the
+> homeservers in the browser, and loads the Outfit font from Google Fonts, so it
+> expects normal outbound internet access.
+
+## Run options
+
+`cargo run` (see [Quick start](#quick-start)) accepts a few variations:
 
 ```bash
+# Override the Postgres connection without editing config.toml (takes precedence)
+TEST_PUBKY_CONNECTION_STRING=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}?pubky-test=true cargo run
+
+# Use a custom config file
 cargo run -- --config my-config.toml
-```
 
-Override the tracing filter directly:
-
-```bash
+# Override the tracing filter
 RUST_LOG=debug cargo run
-```
 
-Start the network without writing any data or running the simulator:
-
-```bash
+# Start the network without writing data or running the simulator
 cargo run -- --listen-only
 ```
 
@@ -166,6 +182,7 @@ Each homeserver publishes a pkarr `SignedPacket` to the DHT so any client can di
 | DHT bootstrap | `localhost:6881` | UDP (Mainline DHT) |
 | Pkarr relay | `http://localhost:15411` | HTTP |
 | Admin socket | `127.0.0.1:6300` | TCP (JSON-line) |
+| Dashboard (UI + API) | `http://127.0.0.1:6400` | SPA + HTTP + SSE |
 | hs1 HTTP | `http://localhost:6286` | HTTP (fixed) |
 | hs2 / hs3 HTTP | ephemeral ports | HTTP (discover via DHT) |
 
@@ -200,6 +217,63 @@ cargo run -- homeserver stop   --index 3   # pause simulator activity
 ```
 
 See the [`homeserver` command](#homeserver) for details.
+
+## Dashboard
+
+A localhost web dashboard (in `dashboard/`) shows all homeservers and updates live
+as they are created, seeded, or stopped. The antfarm process serves the data over
+HTTP + Server-Sent Events on `dashboard_addr` (default `127.0.0.1:6400`):
+
+- `GET /api/homeservers` — one-shot JSON snapshot
+- `GET /api/events` — SSE stream pushing the full snapshot on connect and on every
+  homeserver topology change
+- `GET /api/activity` — SSE stream of per-tick simulator deltas
+- `POST /api/homeserver/create` · `seed` · `stop` — control a homeserver (body `{ "index": N }`)
+- `POST /api/user` — create a user (body `{ "hs": N, "profile": bool }`)
+
+These POST routes bridge directly to the same control channel used by the
+`homeserver` / `seed user` CLI commands, so the dashboard can create, start, stop,
+and add users interactively.
+
+The dashboard has three views, selectable from the left icon rail:
+
+- **Graph** (default) — an interactive network graph. Each homeserver is a hub and
+  each of its users is a node (rendered as a key). Hovering a user shows a card with
+  their avatar, name, public key, and tags; clicking a user reveals their follow
+  relationships. Includes pan, zoom, fit-to-view, and an inline create-homeserver
+  control.
+- **Homeservers** — a card grid of every homeserver (active + dormant). Click one to
+  open a drawer where you can toggle it between **active** and **dormant**, add
+  users, and copy its keys/URL.
+- **Stats** — network info, simulator settings, and live activity totals + feed.
+
+Profiles, avatars, and tags shown in the graph are fetched live from each
+homeserver in the browser via the
+[`@synonymdev/pubky`](https://www.npmjs.com/package/@synonymdev/pubky) client
+(through the pkarr relay), independently of the antfarm API above.
+
+### Single-process (recommended)
+
+The antfarm serves the **built** dashboard from the same port, so it's one process:
+
+```bash
+cd dashboard && npm install && npm run build   # produces dashboard/dist
+cd .. && cargo run                              # open http://127.0.0.1:6400
+```
+
+`cargo run` serves the SPA at `dashboard_addr` and the API under `/api`. Rebuild the
+dashboard (`npm run build`) whenever you change the frontend.
+
+### Dev mode (hot reload)
+
+For frontend work, run Vite separately with hot module reload:
+
+```bash
+cd dashboard
+npm run dev   # http://localhost:5173 (proxies /api to the antfarm)
+```
+
+Set `dashboard_enabled = false` in `config.toml` to turn the dashboard off.
 
 ## Database Lifecycle
 

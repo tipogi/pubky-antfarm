@@ -29,12 +29,14 @@ const NOUNS: &[&str] = &[
     "cedar", "flint", "coral", "ridge", "ember",
 ];
 
-pub(super) fn user_name() -> String {
-    let mut rng = rand::rng();
-    let adj = ADJECTIVES[rng.random_range(0..ADJECTIVES.len())];
-    let noun = NOUNS[rng.random_range(0..NOUNS.len())];
-    let num = rng.random_range(0..100u32);
-    format!("+{adj}{noun}{num:02}")
+/// Deterministic, stable handle for a user index so the same user always shows
+/// the same username across the logs, profile, and dashboard.
+pub(crate) fn user_name(index: usize) -> String {
+    let h = index.wrapping_mul(2654435761);
+    let adj = ADJECTIVES[h % ADJECTIVES.len()];
+    let noun = NOUNS[(h / ADJECTIVES.len()) % NOUNS.len()];
+    let num = (index as u32) % 100;
+    format!("{adj}{noun}{num:02}")
 }
 
 pub struct UserKeys {
@@ -71,6 +73,11 @@ impl UserKeys {
 
     pub fn get_user(&self, index: usize) -> Option<PublicKey> {
         self.keys.get(&index).cloned()
+    }
+
+    /// Iterate over all registered (index, public key) pairs.
+    pub fn all(&self) -> impl Iterator<Item = (usize, &PublicKey)> {
+        self.keys.iter().map(|(&index, pk)| (index, pk))
     }
 
     pub fn random_user(&self) -> Option<(usize, PublicKey)> {

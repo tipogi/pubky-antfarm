@@ -1,13 +1,21 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
 use pubky_testnet::pubky::{PublicKey, Pubky};
 use rand::RngExt as _;
 
 use crate::config::SimulatorConfig;
+use crate::homeservers::Homeserver;
 use crate::social;
 
 pub struct Registry {
     pub user_keys: social::UserKeys,
     pub posts: Vec<(PublicKey, String)>,
+    /// Maps a user index to the homeserver label it signed up on.
+    pub assignments: HashMap<usize, String>,
+    /// Directed follow relationships as (follower index, followee index).
+    /// Aggregated into homeserver-level edges for the network graph.
+    pub follows: Vec<(usize, usize)>,
 }
 
 impl Registry {
@@ -18,7 +26,14 @@ impl Registry {
         Self {
             user_keys,
             posts,
+            assignments: HashMap::new(),
+            follows: Vec::new(),
         }
+    }
+
+    /// Record which homeserver a user index lives on.
+    pub fn assign(&mut self, index: usize, homeserver: String) {
+        self.assignments.insert(index, homeserver);
     }
 
     fn random_post(&self) -> Option<&(PublicKey, String)> {
@@ -30,13 +45,21 @@ impl Registry {
     }
 }
 
+/// The number of each entity created during a single tick.
+pub struct TickSummary {
+    pub users: u32,
+    pub posts: u32,
+    pub tags: u32,
+    pub follows: u32,
+}
+
 pub async fn tick(
     sdk: &Pubky,
-    homeservers: &[(String, PublicKey)],
+    homeservers: &[Homeserver],
     registry: &mut Registry,
     sim: &SimulatorConfig,
     tick_num: u64,
-) {
+) -> TickSummary {
     let mut rng = rand::rng();
     let num_users = rng.random_range(sim.users_per_tick[0]..=sim.users_per_tick[1]);
     let num_posts = rng.random_range(sim.posts_per_tick[0]..=sim.posts_per_tick[1]);
@@ -50,11 +73,14 @@ pub async fn tick(
 
     for _ in 0..num_users {
         let hs_idx = rng.random_range(0..homeservers.len());
-        let (_, hs_pk) = &homeservers[hs_idx];
+        let hs = &homeservers[hs_idx];
+        let hs_label = hs.label.clone();
+        let hs_pk = &hs.public_key;
         let (index, keypair) = registry.user_keys.create_next();
 
         match social::signup_and_write(sdk, index, hs_pk, keypair).await {
             Ok((user_pk, post_id)) => {
+                registry.assign(index, hs_label);
                 registry.posts.push((user_pk, post_id));
                 created_users += 1;
             }
@@ -116,7 +142,7 @@ pub async fn tick(
         let Some((follower_idx, _)) = registry.user_keys.random_user() else {
             continue;
         };
-        let Some((_, followee_pk)) = registry.user_keys.random_user() else {
+        let Some((followee_idx, followee_pk)) = registry.user_keys.random_user() else {
             continue;
         };
         let follower_keypair = social::UserKeys::keypair_at(follower_idx);
@@ -126,6 +152,7 @@ pub async fn tick(
 
         match social::create_follow(sdk, follower_keypair, &followee_pk.z32()).await {
             Ok(()) => {
+                registry.follows.push((follower_idx, followee_idx));
                 created_follows += 1;
             }
             Err(e) => {
@@ -146,4 +173,11 @@ pub async fn tick(
         format!("+{created_follows}").yellow(),
         "follows".dimmed(),
     );
+
+    TickSummary {
+        users: created_users,
+        posts: created_posts,
+        tags: created_tags,
+        follows: created_follows,
+    }
 }

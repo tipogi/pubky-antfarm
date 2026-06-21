@@ -28,16 +28,16 @@ pub(crate) async fn write_profile(
     index: usize,
     user_pk: &PublicKey,
 ) -> anyhow::Result<()> {
-    let name = identity::user_name();
+    let name = identity::user_name(index);
     let label = format!("[{name}]").magenta().bold().to_string();
     let z32 = user_pk.z32();
 
-    let image_uri = file::upload_avatar(storage, index, &label, &z32).await?;
+    let image_uri = upload_avatar_best_effort(storage, index, &label, &z32).await;
 
     let user = PubkyAppUser::new(
         name.clone(),
         Some(format!("Antfarm test user {name}. im index {index}")),
-        Some(image_uri),
+        image_uri,
         Some(vec![PubkyAppUserLink::new(
             "Website".into(),
             "https://pubky.app".into(),
@@ -53,6 +53,23 @@ pub(crate) async fn write_profile(
     Ok(())
 }
 
+/// Upload the avatar, returning `None` (and logging) on failure or timeout so a
+/// slow/unreachable avatar host never hangs or aborts user creation.
+async fn upload_avatar_best_effort(
+    storage: &SessionStorage,
+    index: usize,
+    label: &str,
+    z32: &str,
+) -> Option<String> {
+    match file::upload_avatar(storage, index, label, z32).await {
+        Ok(uri) => Some(uri),
+        Err(e) => {
+            println!("  {label} {} {e}", "avatar skipped:".yellow());
+            None
+        }
+    }
+}
+
 /// Full signup + profile + first post + tag (used by the simulator).
 pub(crate) async fn signup_and_write(
     sdk: &Pubky,
@@ -62,16 +79,16 @@ pub(crate) async fn signup_and_write(
 ) -> anyhow::Result<(PublicKey, String)> {
     let (user_pk, storage) = signup(sdk, keypair, hs_pk).await?;
 
-    let name = identity::user_name();
+    let name = identity::user_name(index);
     let label = format!("[{name}]").magenta().bold().to_string();
     let z32 = user_pk.z32();
 
-    let image_uri = file::upload_avatar(&storage, index, &label, &z32).await?;
+    let image_uri = upload_avatar_best_effort(&storage, index, &label, &z32).await;
 
     let user = PubkyAppUser::new(
         name.clone(),
         Some(format!("Antfarm test user {name}. im index {index}")),
-        Some(image_uri),
+        image_uri,
         Some(vec![PubkyAppUserLink::new(
             "Website".into(),
             "https://pubky.app".into(),

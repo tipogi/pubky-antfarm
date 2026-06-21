@@ -135,6 +135,12 @@ pub struct AntfarmConfig {
     /// Address for the control socket (TCP).
     #[serde(default = "AntfarmConfig::default_control_addr")]
     pub control_addr: String,
+    /// Address for the dashboard HTTP API.
+    #[serde(default = "AntfarmConfig::default_dashboard_addr")]
+    pub dashboard_addr: String,
+    /// Whether to start the dashboard HTTP API.
+    #[serde(default = "default_true")]
+    pub dashboard_enabled: bool,
     #[serde(default)]
     pub postgres: PostgresConfig,
     #[serde(default)]
@@ -229,6 +235,8 @@ impl Default for AntfarmConfig {
             tracing: true,
             max_homeservers: Self::default_max_homeservers(),
             control_addr: Self::default_control_addr(),
+            dashboard_addr: Self::default_dashboard_addr(),
+            dashboard_enabled: true,
             postgres: PostgresConfig::default(),
             homeservers: vec![
                 HomeserverEntry {
@@ -246,6 +254,7 @@ impl Default for AntfarmConfig {
 }
 
 pub const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:6300";
+pub const DEFAULT_DASHBOARD_ADDR: &str = "127.0.0.1:6400";
 
 impl AntfarmConfig {
     fn default_max_homeservers() -> usize {
@@ -254,6 +263,10 @@ impl AntfarmConfig {
 
     fn default_control_addr() -> String {
         DEFAULT_CONTROL_ADDR.into()
+    }
+
+    fn default_dashboard_addr() -> String {
+        DEFAULT_DASHBOARD_ADDR.into()
     }
 
     /// User key indices start right after the homeserver-reserved range.

@@ -1,8 +1,11 @@
 tracing = true
 max_homeservers = 24   # also the starting index for user keys
 
+# dashboard_addr = "127.0.0.1:6400"   # dashboard HTTP API address
+# dashboard_enabled = true            # serve the dashboard HTTP API
+
 [postgres]
-url = "postgres://postgres:postgres@localhost:5432/postgres"
+url = "postgres://antfarm_user:antfarm_pass@localhost:5432/antfarm?pubky-test=true"
 
 [[homeservers]]
 label = "hs2"

@@ -5,21 +5,40 @@ use pubky_testnet::StaticTestnet;
 
 use crate::config::{HomeserverEntry, AntfarmConfig};
 
+/// A homeserver tracked by the runtime, with the metadata needed for both
+/// simulator activity (the `PublicKey`) and the dashboard (label, seed, URL).
+pub struct Homeserver {
+    pub label: String,
+    pub seed: u8,
+    pub public_key: PublicKey,
+    pub http_url: String,
+}
+
 pub async fn start_all(
     testnet: &mut StaticTestnet,
     config: &AntfarmConfig,
-) -> anyhow::Result<Vec<(String, PublicKey)>> {
+) -> anyhow::Result<Vec<Homeserver>> {
     let hs1_pk = testnet.homeserver_app().public_key();
-    let hs1_http = testnet.homeserver_app().icann_http_url();
-    print_hs("hs1", &hs1_pk.z32(), hs1_http.as_ref());
+    let hs1_http = testnet.homeserver_app().icann_http_url().to_string();
+    print_hs("hs1", &hs1_pk.z32(), &hs1_http);
 
-    let mut homeservers: Vec<(String, PublicKey)> = vec![("hs1".into(), hs1_pk)];
+    let mut homeservers: Vec<Homeserver> = vec![Homeserver {
+        label: "hs1".into(),
+        seed: 0,
+        public_key: hs1_pk,
+        http_url: hs1_http,
+    }];
     for entry in &config.homeservers {
         let hs = create_fixed(testnet, config.postgres_url(), entry).await?;
         let pk = hs.public_key();
-        let http = hs.icann_http_url();
-        print_hs(&entry.label, &pk.z32(), http.as_ref());
-        homeservers.push((entry.label.clone(), pk));
+        let http = hs.icann_http_url().to_string();
+        print_hs(&entry.label, &pk.z32(), &http);
+        homeservers.push(Homeserver {
+            label: entry.label.clone(),
+            seed: entry.seed,
+            public_key: pk,
+            http_url: http,
+        });
     }
 
     Ok(homeservers)
@@ -44,7 +63,7 @@ pub async fn create_dynamic(
     testnet: &mut StaticTestnet,
     pg_url: &str,
     index: u8,
-) -> anyhow::Result<(String, PublicKey, String)> {
+) -> anyhow::Result<Homeserver> {
     let label = format!("hs{}", index + 1);
     let seed_bytes = [index; 32];
     let mut config = ConfigToml::default_test_config();
@@ -55,7 +74,12 @@ pub async fn create_dynamic(
     let pk = hs.public_key();
     let http_url = hs.icann_http_url().to_string();
     print_hs(&label, &pk.z32(), &http_url);
-    Ok((label, pk, http_url))
+    Ok(Homeserver {
+        label,
+        seed: index,
+        public_key: pk,
+        http_url,
+    })
 }
 
 pub fn print_hs(label: &str, pubkey: &str, http_url: &str) {
