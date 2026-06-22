@@ -1,8 +1,8 @@
-# pubky-antfarm
-
 <p align="center">
   <img src="assets/antfarm-logo.svg" alt="pubky-antfarm logo" width="120" />
 </p>
+
+# pubky-antfarm
 
 Local testnet with simulated social activity for testing Pubky services. Spins up an isolated DHT network with multiple homeservers and a continuous simulator generating users, posts, and tags -- designed for testing Nexus against a decentralized environment with realistic cross-homeserver activity.
 
