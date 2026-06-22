@@ -7,6 +7,7 @@ mod runtime;
 mod simulator;
 mod social;
 mod testnet;
+mod web;
 
 use clap::Parser;
 use config::{Cli, Command};

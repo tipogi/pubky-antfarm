@@ -1,4 +1,6 @@
 use std::path::Path;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use pubky_app_specs::{
     blob_uri_builder, file_uri_builder,
@@ -11,6 +13,23 @@ use super::common::{self, Writable};
 
 const AVATARS_DIR: &str = "static/avatars";
 
+/// Shared HTTP client for avatar downloads.
+///
+/// Building a fresh `reqwest::Client` per request leaks file descriptors
+/// (each client owns a connection pool + DNS resolver), which eventually
+/// causes "Too many open files (os error 24)". A single reused client keeps
+/// connections pooled and bounded.
+fn avatar_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(8))
+            .pool_max_idle_per_host(4)
+            .build()
+            .expect("failed to build avatar HTTP client")
+    })
+}
+
 async fn fetch_avatar(index: usize) -> anyhow::Result<Vec<u8>> {
     let dir = Path::new(AVATARS_DIR);
     let file_path = dir.join(format!("{index}.jpg"));
@@ -22,7 +41,13 @@ async fn fetch_avatar(index: usize) -> anyhow::Result<Vec<u8>> {
     std::fs::create_dir_all(dir)?;
 
     let url = format!("https://robohash.org/{index}.jpg");
-    let bytes = reqwest::get(&url).await?.bytes().await?.to_vec();
+    let bytes = avatar_client()
+        .get(&url)
+        .send()
+        .await?
+        .bytes()
+        .await?
+        .to_vec();
 
     std::fs::write(&file_path, &bytes)?;
     Ok(bytes)

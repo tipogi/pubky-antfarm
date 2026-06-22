@@ -12,6 +12,7 @@ use futures_util::StreamExt;
 use pubky_testnet::pubky::{Pubky, PublicKey};
 
 pub use identity::UserKeys;
+pub(crate) use identity::user_name;
 pub(crate) use follow::create as create_follow;
 pub(crate) use mention::create as create_mention;
 pub(crate) use post::create as create_post;
