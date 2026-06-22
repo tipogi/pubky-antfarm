@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { CopyButton } from "./CopyButton";
 import {
   useDashboard,
@@ -11,6 +11,8 @@ import {
 import { useActivity, type TickEvent } from "./useActivity";
 import { api, type ControlResponse } from "./api";
 import { GraphView } from "./GraphView";
+import { HomeserverUsersView } from "./HomeserverUsersView";
+import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
 
 export type RunAction = (fn: () => Promise<ControlResponse>) => void;
@@ -25,7 +27,8 @@ interface Toast {
 export default function App() {
   const { state, connected } = useDashboard();
   const feed = useActivity();
-  const [selected, setSelected] = useState<Homeserver | null>(null);
+  const [drawerHs, setDrawerHs] = useState<Homeserver | null>(null);
+  const [detailHs, setDetailHs] = useState<Homeserver | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [view, setView] = useState<View>("graph");
@@ -35,6 +38,14 @@ export default function App() {
   const totalUsers = homeservers.reduce((sum, hs) => sum + hs.userCount, 0);
   const nextIndex =
     homeservers.reduce((max, hs) => Math.max(max, hs.seed), 0) + 1;
+
+  useEffect(() => {
+    if (view !== "graph") setDrawerHs(null);
+    if (view !== "homeservers") setDetailHs(null);
+  }, [view]);
+
+  const resolveHs = (hs: Homeserver) =>
+    homeservers.find((h) => h.label === hs.label) ?? hs;
 
   const runAction: RunAction = async (fn) => {
     setBusy(true);
@@ -94,7 +105,7 @@ export default function App() {
                 homeservers={homeservers}
                 follows={state.follows ?? []}
                 feed={feed}
-                onSelect={setSelected}
+                onSelect={setDrawerHs}
                 nextIndex={nextIndex}
                 busy={busy}
                 onCreateHomeserver={(index) =>
@@ -106,21 +117,48 @@ export default function App() {
             )}
           </div>
         ) : view === "homeservers" ? (
-          <div className="content-body">
-            {homeservers.length === 0 ? (
-              <p className="muted">No homeservers running.</p>
-            ) : (
-              <main className="grid">
-                {homeservers.map((hs) => (
-                  <HomeserverCard
-                    key={hs.label}
-                    hs={hs}
-                    onClick={() => setSelected(hs)}
-                  />
-                ))}
-              </main>
-            )}
-          </div>
+          <>
+            <header className="content-head">
+              <div className="content-heading">
+                <h1>{detailHs ? detailHs.label : "Homeservers"}</h1>
+                <p className="content-sub">
+                  {detailHs ? (
+                    <>
+                      seed {detailHs.seed} · {detailHs.userCount}{" "}
+                      {detailHs.userCount === 1 ? "user" : "users"} ·{" "}
+                      {detailHs.status}
+                    </>
+                  ) : (
+                    <>
+                      {homeservers.length}{" "}
+                      {homeservers.length === 1 ? "homeserver" : "homeservers"} ·{" "}
+                      {active} active · {totalUsers} users
+                    </>
+                  )}
+                </p>
+              </div>
+            </header>
+            <div className="content-body">
+              {homeservers.length === 0 ? (
+                <p className="muted">No homeservers running.</p>
+              ) : detailHs ? (
+                <HomeserverUsersView
+                  hs={resolveHs(detailHs)}
+                  onBack={() => setDetailHs(null)}
+                />
+              ) : (
+                <div className="grid">
+                  {homeservers.map((hs) => (
+                    <HomeserverCard
+                      key={hs.label}
+                      hs={hs}
+                      onClick={() => setDetailHs(hs)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <div className="content-body">
             <section className="summary">
@@ -135,12 +173,12 @@ export default function App() {
         )}
       </main>
 
-      {selected && (
+      {view === "graph" && drawerHs && (
         <HomeserverDrawer
-          hs={homeservers.find((h) => h.label === selected.label) ?? selected}
+          hs={resolveHs(drawerHs)}
           busy={busy}
           onAction={runAction}
-          onClose={() => setSelected(null)}
+          onClose={() => setDrawerHs(null)}
         />
       )}
 
@@ -367,6 +405,10 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function shortKey(key: string): string {
+  return key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key;
+}
+
 function HomeserverCard({
   hs,
   onClick,
@@ -374,19 +416,121 @@ function HomeserverCard({
   hs: Homeserver;
   onClick: () => void;
 }) {
+  const { color, keyColor } = hubColorFor(hs.seed);
+
   return (
-    <article className={`card ${hs.status}`} onClick={onClick}>
-      <div className="card-head">
-        <span className={`dot ${hs.status}`} />
-        <h2>{hs.label}</h2>
-        <span className={`badge ${hs.status}`}>{hs.status}</span>
+    <article
+      className={`hs-card ${hs.status}`}
+      style={
+        {
+          "--hs-accent": color,
+          "--hs-key": keyColor,
+        } as CSSProperties
+      }
+      onClick={onClick}
+    >
+      <header className="hs-card-head">
+        <span className="hs-card-avatar" aria-hidden>
+          <svg viewBox={ROOT_VIEWBOX} className="hs-card-avatar-icon">
+            <RootPaths />
+          </svg>
+        </span>
+        <div className="hs-card-title">
+          <div className="hs-card-title-row">
+            <h2>{hs.label}</h2>
+            <span className={`hs-card-pill ${hs.status}`}>
+              <span className={`hs-card-pill-dot ${hs.status}`} aria-hidden />
+              {hs.status}
+            </span>
+          </div>
+          <span className="hs-card-seed">seed {hs.seed}</span>
+        </div>
+      </header>
+
+      <div className="hs-card-stats">
+        <span className="hs-stat">
+          <UsersStatIcon />
+          {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
+        </span>
       </div>
-      <code className="pk">{hs.publicKey}</code>
-      <div className="meta">
-        <span>seed {hs.seed}</span>
-        <span className="user-count">{hs.userCount} users</span>
+
+      <div className="hs-card-divider" role="separator" />
+
+      <div className="hs-card-row">
+        <button
+          type="button"
+          className="hs-card-pk"
+          title={hs.publicKey}
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard.writeText(hs.publicKey);
+          }}
+        >
+          <KeyRowIcon />
+          {shortKey(hs.publicKey)}
+        </button>
+        <span className="hs-card-links">
+          <a
+            className="hs-card-link"
+            href={hs.httpUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Open homeserver URL"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GlobeLinkIcon />
+          </a>
+          <button
+            type="button"
+            className="hs-card-link"
+            title="Copy public key"
+            onClick={(e) => {
+              e.stopPropagation();
+              void navigator.clipboard.writeText(hs.publicKey);
+            }}
+          >
+            <DatabaseLinkIcon />
+          </button>
+        </span>
       </div>
     </article>
+  );
+}
+
+function UsersStatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-stat-icon" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function KeyRowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-row-icon" aria-hidden="true">
+      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4" />
+    </svg>
+  );
+}
+
+function GlobeLinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-link-icon" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  );
+}
+
+function DatabaseLinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-link-icon" aria-hidden="true">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
+    </svg>
   );
 }
 
@@ -443,36 +587,33 @@ function HomeserverDrawer({
   onClose: () => void;
 }) {
   const [profile, setProfile] = useState(false);
+  const { color: hubColor } = hubColorFor(hs.seed);
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className="drawer"
+        style={{ "--hs-accent": hubColor } as CSSProperties}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="drawer-head">
-          <span className={`dot ${hs.status}`} />
-          <h2>{hs.label}</h2>
-          <span className={`badge ${hs.status}`}>{hs.status}</span>
+          <div className="drawer-identity">
+            <span className="drawer-swatch" aria-hidden>
+              <svg viewBox={ROOT_VIEWBOX} className="drawer-swatch-icon">
+                <RootPaths />
+              </svg>
+            </span>
+            <div className="drawer-title-block">
+              <h2>{hs.label}</h2>
+              <p className="drawer-sub">
+                {hs.userCount} {hs.userCount === 1 ? "user" : "users"} · seed{" "}
+                {hs.seed}
+              </p>
+            </div>
+          </div>
           <button className="close-btn" onClick={onClose} aria-label="Close">
             ×
           </button>
-        </div>
-
-        <div className="drawer-actions">
-          <StatusToggle hs={hs} busy={busy} onAction={onAction} />
-          <button
-            className="action"
-            disabled={busy}
-            onClick={() => onAction(() => api.addUser(hs.seed, profile))}
-          >
-            Add user
-          </button>
-          <label className="profile-toggle">
-            <input
-              type="checkbox"
-              checked={profile}
-              onChange={(e) => setProfile(e.target.checked)}
-            />
-            with profile
-          </label>
         </div>
 
         <DrawerField label="Public key">
@@ -487,14 +628,37 @@ function HomeserverDrawer({
           <CopyButton value={hs.httpUrl} />
         </DrawerField>
 
-        <DrawerField label="Seed">
-          <span className="mono">{hs.seed}</span>
-        </DrawerField>
+        <div className="drawer-actions-row">
+          <span className="drawer-actions-label">Simulator</span>
+          <span className="drawer-actions-label">User</span>
 
-        <div className="drawer-field">
+          <div className="drawer-panel drawer-actions-panel">
+            <StatusToggle hs={hs} busy={busy} onAction={onAction} />
+          </div>
+
+          <div className="drawer-panel drawer-actions-panel add-user-panel">
+            <button
+              className="action primary add-user-btn"
+              disabled={busy}
+              onClick={() => onAction(() => api.addUser(hs.seed, profile))}
+            >
+              Add
+            </button>
+            <label className="profile-toggle">
+              <input
+                type="checkbox"
+                checked={profile}
+                onChange={(e) => setProfile(e.target.checked)}
+              />
+              <span>with profile</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="drawer-field drawer-users">
           <span className="drawer-label">Users ({hs.userCount})</span>
           {hs.users.length === 0 ? (
-            <p className="muted small">No users yet.</p>
+            <p className="muted small drawer-users-empty">No users yet.</p>
           ) : (
             <ul className="user-list">
               {hs.users.map((user) => (

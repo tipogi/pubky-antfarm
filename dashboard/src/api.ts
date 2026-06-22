@@ -7,6 +7,19 @@ export interface ControlResponse {
   error?: string;
 }
 
+export interface UserStorageStats {
+  index: number;
+  publicKey: string;
+  usedBytes: number;
+  storageQuotaMb?: number | null;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
+
 async function postJson(url: string, body: unknown): Promise<ControlResponse> {
   try {
     const res = await fetch(url, {
@@ -27,4 +40,6 @@ export const api = {
   stopHomeserver: (index: number) => postJson("/api/homeserver/stop", { index }),
   addUser: (hs: number, profile: boolean) =>
     postJson("/api/user", { hs, profile }),
+  fetchUsersStorage: (seed: number) =>
+    getJson<UserStorageStats[]>(`/api/homeserver/${seed}/users/storage`),
 };

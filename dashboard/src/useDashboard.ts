@@ -16,6 +16,8 @@ export interface Homeserver {
   status: HomeserverStatus;
   userCount: number;
   users: User[];
+  /** Per-user storage quota in MB from antfarm config. Omitted when unlimited. */
+  storageQuotaMb?: number;
 }
 
 export interface NetworkInfo {

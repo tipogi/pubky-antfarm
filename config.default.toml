@@ -1,5 +1,6 @@
 tracing = true
 max_homeservers = 24   # also the starting index for user keys
+# user_storage_quota_mb = 512   # per-user storage cap on every homeserver (0 = unlimited)
 
 # dashboard_addr = "127.0.0.1:6400"   # dashboard HTTP API address
 # dashboard_enabled = true            # serve the dashboard HTTP API

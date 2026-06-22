@@ -9,32 +9,24 @@ import {
 } from "react";
 import type { FollowEdge, Homeserver, User } from "./useDashboard";
 import type { TickEvent } from "./useActivity";
-import { loadAvatar, loadProfile, loadTags } from "./pubky";
+import { loadAvatar, loadProfile, loadTags, type UserStorageContext } from "./pubky";
 import { ROOT_RATIO, ROOT_VIEWBOX, RootPaths } from "./RootMark";
+import { hubColorFor } from "./hubColors";
 
 const HUB_SPACING = 560;
-const HUB_R = 28;
+const HUB_R = 40;
 const USER_R = 15;
 const MIN_K = 0.15;
 const MAX_K = 2.5;
 
-// Distinct hues for clusters; cycled by homeserver seed.
-// Led by the brand palette (blue / yellow / pink), then complementary tints.
-const PALETTE = [
-  "#fefa3d",
-  "#6db5ff",
-  "#ff5de7",
-  "#54d1ff",
-  "#ffb454",
-  "#b78cff",
-  "#8ce06a",
-  "#ff8f6b",
-  "#39d3c3",
-  "#c0c0c0",
-];
-
-function colorFor(seed: number): string {
-  return PALETTE[seed % PALETTE.length];
+function darkenHex(hex: string, mix = 0.3): string {
+  const c = hex.replace("#", "");
+  const ch = (i: number) => parseInt(c.slice(i, i + 2), 16);
+  const dim = (v: number) =>
+    Math.max(0, Math.min(255, Math.round(v * (1 - mix))));
+  return `#${dim(ch(0)).toString(16).padStart(2, "0")}${dim(ch(2))
+    .toString(16)
+    .padStart(2, "0")}${dim(ch(4)).toString(16).padStart(2, "0")}`;
 }
 
 // Pick black or white for best contrast against a node's fill color.
@@ -90,7 +82,7 @@ function build(homeservers: Homeserver[]): Built {
     const row = Math.floor(i / cols);
     const hx = col * HUB_SPACING;
     const hy = row * HUB_SPACING;
-    const color = colorFor(hs.seed);
+    const { color, keyColor } = hubColorFor(hs.seed);
 
     const hub: Node = {
       id: `hub:${hs.label}`,
@@ -116,7 +108,7 @@ function build(homeservers: Homeserver[]): Built {
         x: hx + ring * Math.cos(angle),
         y: hy + ring * Math.sin(angle),
         r: USER_R,
-        color,
+        color: keyColor,
         hs,
         user,
       };
@@ -475,6 +467,10 @@ export function GraphView({
             {built.nodes.map((n) => {
               const lit = isLit(n.id);
               const active = n.hs.status === "active";
+              const glowId =
+                n.kind === "hub"
+                  ? `hub-glow-${n.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`
+                  : null;
               return (
                 <g
                   key={n.id}
@@ -503,14 +499,49 @@ export function GraphView({
                 >
                   {n.kind === "hub" ? (
                     <>
+                      <defs>
+                        <radialGradient
+                          id={glowId!}
+                          gradientUnits="userSpaceOnUse"
+                          cx={0}
+                          cy={0}
+                          r={n.r + 34}
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor={darkenHex(n.color, 0.15)}
+                            stopOpacity={0.62}
+                          />
+                          <stop
+                            offset="45%"
+                            stopColor={darkenHex(n.color, 0.35)}
+                            stopOpacity={0.28}
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor={darkenHex(n.color, 0.5)}
+                            stopOpacity={0}
+                          />
+                        </radialGradient>
+                      </defs>
                       <circle
-                        className="gv-hub-disc"
+                        className="gv-hub-glow"
+                        r={n.r + 34}
+                        fill={`url(#${glowId})`}
+                      />
+                      <circle
+                        className="gv-hub-core"
                         r={n.r}
-                        style={{ fill: n.color }}
+                        style={{
+                          fill: darkenHex(n.color, 0.1),
+                          stroke: darkenHex(n.color, 0.48),
+                          strokeWidth: 2.5,
+                        }}
                       />
                       {(() => {
                         const rw = n.r * 1.5;
                         const rh = rw * ROOT_RATIO;
+                        const ink = contrastInk(n.color);
                         return (
                           <svg
                             className="gv-hub-root"
@@ -520,15 +551,16 @@ export function GraphView({
                             height={rh}
                             viewBox={ROOT_VIEWBOX}
                             pointerEvents="none"
+                            style={{ fill: ink }}
                           >
                             <RootPaths />
                           </svg>
                         );
                       })()}
-                      <text className="gv-hub-label" y={-n.r - 12}>
+                      <text className="gv-hub-label" y={-n.r - 14}>
                         {n.hs.label}
                       </text>
-                      <text className="gv-hub-count" y={n.r + 18}>
+                      <text className="gv-hub-count" y={n.r + 22}>
                         {n.hs.userCount} users
                       </text>
                     </>
@@ -650,37 +682,39 @@ export function GraphView({
 }
 
 /**
- * Reads a user's real profile (name + avatar) straight from their homeserver
- * via the pubky client, falling back to whatever the backend already provided
- * while the fetch is in flight.
+ * Reads a user's real profile (name + avatar) directly through the Pubky SDK,
+ * falling back to the graph label while the fetch is in flight.
  */
-function useProfile(pk: string | null) {
+function useProfile(ctx: UserStorageContext | null) {
   const [name, setName] = useState<string | null>(null);
+  const [bio, setBio] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
 
   useEffect(() => {
     setName(null);
+    setBio(null);
     setAvatar(null);
     setTags([]);
-    if (!pk) return;
+    if (!ctx) return;
     let alive = true;
-    loadProfile(pk).then((profile) => {
-      if (!alive || !profile) return;
-      if (profile.name) setName(profile.name);
-      loadAvatar(profile.image).then((url) => {
+    loadProfile(ctx).then((profile) => {
+      if (!alive) return;
+      if (profile?.name) setName(profile.name);
+      if (profile?.bio) setBio(profile.bio);
+      loadAvatar(profile?.image, ctx).then((url) => {
         if (alive && url) setAvatar(url);
       });
     });
-    loadTags(pk).then((t) => {
+    loadTags(ctx).then((t) => {
       if (alive) setTags(t);
     });
     return () => {
       alive = false;
     };
-  }, [pk]);
+  }, [ctx?.pk, ctx?.homeserverUrl, ctx?.userIndex]);
 
-  return { name, avatar, tags };
+  return { name, bio, avatar, tags };
 }
 
 function HoverCard({
@@ -692,8 +726,15 @@ function HoverCard({
   left: number;
   top: number;
 }) {
-  const pk = node.kind === "user" ? node.user?.publicKey ?? null : null;
-  const { name, avatar, tags } = useProfile(pk);
+  const profileCtx =
+    node.kind === "user" && node.user
+      ? {
+          pk: node.user.publicKey,
+          homeserverUrl: node.hs.httpUrl,
+          userIndex: node.user.index,
+        }
+      : null;
+  const { name, bio, avatar, tags } = useProfile(profileCtx);
   const idx = node.user?.index;
   const title =
     node.kind === "hub"
@@ -728,6 +769,8 @@ function HoverCard({
         </code>
       )}
 
+      {node.kind === "user" && bio && <p className="gv-card-bio">{bio}</p>}
+
       {node.kind === "user" && tags.length > 0 && (
         <div className="gv-card-tags">
           {tags.slice(0, 6).map((t) => {
@@ -752,14 +795,15 @@ function shortKey(key: string): string {
   return key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key;
 }
 
-// Stable brand color per tag label.
+// Tag chips — drawn from the node palette, not UI accent colors.
 const TAG_COLORS = [
-  "#6db5ff",
-  "#fefa3d",
-  "#ff5de7",
-  "#8ce06a",
-  "#ffb454",
-  "#b78cff",
+  "#293681",
+  "#E05454",
+  "#1F6F5F",
+  "#FF8B5A",
+  "#3D45AA",
+  "#4D2FB2",
+  "#5DD3B6",
 ];
 function tagColor(label: string): string {
   let h = 0;

@@ -1,13 +1,12 @@
-use std::convert::Infallible;
-use std::time::Duration;
-
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use colored::Colorize;
 use futures_util::stream::Stream;
 use serde::Deserialize;
+use std::convert::Infallible;
+use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
@@ -17,11 +16,8 @@ use crate::control;
 /// Built dashboard SPA, resolved at compile time so it works no matter what
 /// directory `cargo run` is launched from.
 const DASHBOARD_DIST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/dashboard/dist");
-/// Cached robohash avatars written during user signup. Served so the graph can
-/// render real per-user avatars (with a client-side fallback when missing).
-const AVATARS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static/avatars");
 
-use super::{DashboardState, TickEvent};
+use super::{storage, DashboardState, TickEvent};
 
 #[derive(Clone)]
 struct AppState {
@@ -54,8 +50,8 @@ pub async fn serve(
         .route("/api/homeserver/create", post(create_homeserver))
         .route("/api/homeserver/seed", post(seed_homeserver))
         .route("/api/homeserver/stop", post(stop_homeserver))
+        .route("/api/homeserver/:seed/users/storage", get(user_storage))
         .route("/api/user", post(create_user))
-        .nest_service("/avatars", ServeDir::new(AVATARS_DIR))
         .fallback_service(spa)
         .layer(CorsLayer::permissive())
         .with_state(AppState {
@@ -163,6 +159,26 @@ async fn stop_homeserver(
     Json(req): Json<IndexReq>,
 ) -> Json<control::Response> {
     Json(send_cmd(&app.ctrl_tx, control::Action::Stop, Some(req.index), None, false).await)
+}
+
+async fn user_storage(
+    State(app): State<AppState>,
+    Path(seed): Path<u8>,
+) -> Json<Vec<storage::UserStorageStats>> {
+    let (database_url, configured_quota_mb, users) = {
+        let state = app.state.borrow();
+        let Some(hs) = state.homeservers.iter().find(|hs| hs.seed == seed) else {
+            return Json(Vec::new());
+        };
+        (
+            hs.database_url.clone(),
+            hs.storage_quota_mb.unwrap_or(0),
+            hs.users.clone(),
+        )
+    };
+    Json(
+        storage::fetch_users_storage(&database_url, configured_quota_mb, &users).await,
+    )
 }
 
 async fn create_user(

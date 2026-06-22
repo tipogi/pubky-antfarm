@@ -129,6 +129,9 @@ pub enum SeedAction {
 pub struct AntfarmConfig {
     #[serde(default = "default_true")]
     pub tracing: bool,
+    /// Per-user storage quota (MB) for every homeserver. `0` = unlimited.
+    #[serde(default)]
+    pub user_storage_quota_mb: u64,
     /// Maximum number of homeservers (also the starting index for user keys).
     #[serde(default = "AntfarmConfig::default_max_homeservers")]
     pub max_homeservers: usize,
@@ -233,6 +236,7 @@ impl Default for AntfarmConfig {
     fn default() -> Self {
         Self {
             tracing: true,
+            user_storage_quota_mb: 0,
             max_homeservers: Self::default_max_homeservers(),
             control_addr: Self::default_control_addr(),
             dashboard_addr: Self::default_dashboard_addr(),

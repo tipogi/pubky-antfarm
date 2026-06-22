@@ -1,4 +1,5 @@
 pub mod server;
+pub mod storage;
 
 use std::collections::HashMap;
 
@@ -40,6 +41,13 @@ pub struct HomeserverInfo {
     pub status: HomeserverStatus,
     pub user_count: usize,
     pub users: Vec<UserInfo>,
+    /// Per-user storage quota in MB. Omitted when unlimited (`0`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_quota_mb: Option<u64>,
+    #[serde(skip_serializing)]
+    pub admin_url: String,
+    #[serde(skip_serializing)]
+    pub database_url: String,
 }
 
 impl HomeserverInfo {
@@ -56,6 +64,9 @@ impl HomeserverInfo {
             status,
             user_count: users.len(),
             users,
+            storage_quota_mb: (hs.storage_quota_mb > 0).then_some(hs.storage_quota_mb),
+            admin_url: hs.admin_url.clone(),
+            database_url: hs.database_url.clone(),
         }
     }
 }

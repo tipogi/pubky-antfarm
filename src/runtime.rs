@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use colored::Colorize;
-use pubky_testnet::pubky::Pubky;
+use pubky_testnet::pubky::{Pubky, PubkyHttpClient};
 use tokio::sync::{broadcast, watch};
 
 use crate::config::AntfarmConfig;
@@ -25,13 +25,8 @@ impl Runtime {
     pub async fn new(config_path: &str) -> anyhow::Result<Self> {
         let config = AntfarmConfig::load(config_path)?;
 
-        // hs1 is created by StaticTestnet, which reads its Postgres connection
-        // from TEST_PUBKY_CONNECTION_STRING (not config.toml). If the user didn't
-        // export it, fall back to the configured url so config.toml drives every
-        // homeserver, including hs1. An explicit env var still takes precedence.
-        if std::env::var("TEST_PUBKY_CONNECTION_STRING").is_err() {
-            std::env::set_var("TEST_PUBKY_CONNECTION_STRING", config.postgres_url());
-        }
+        // hs1 uses the same named database as other homeservers (pubky_antfarm_hs1).
+        // TEST_PUBKY_CONNECTION_STRING is no longer required for dashboard storage stats.
 
         if config.tracing {
             tracing_subscriber::fmt()
@@ -45,12 +40,13 @@ impl Runtime {
                 .init();
         }
 
-        let db_labels: Vec<&str> = config.homeservers.iter().map(|h| h.label.as_str()).collect();
+        let mut db_labels: Vec<&str> = vec!["hs1"];
+        db_labels.extend(config.homeservers.iter().map(|h| h.label.as_str()));
 
         println!("{}", "▸ Setting up databases".cyan().bold());
         db::setup_databases(config.postgres_url(), &db_labels).await?;
 
-        let mut testnet = testnet::start().await?;
+        let mut testnet = testnet::start(&config).await?;
         let homeservers = homeservers::start_all(&mut testnet, &config).await?;
 
         db::list_databases(config.postgres_url()).await?;
@@ -63,7 +59,10 @@ impl Runtime {
             web::PKARR_RELAY_URL.underline()
         );
 
-        let sdk = testnet.sdk()?;
+        let client = PubkyHttpClient::builder()
+            .testnet_with_host("127.0.0.1")
+            .build()?;
+        let sdk = Pubky::with_client(client);
 
         let dormant = HashMap::new();
         let totals = ActivityTotals::default();
@@ -263,7 +262,12 @@ impl Runtime {
         db::create_single_database(self.config.postgres_url(), &label).await?;
 
         let hs =
-            homeservers::create_dynamic(&mut self.testnet, self.config.postgres_url(), index)
+            homeservers::create_dynamic(
+                &mut self.testnet,
+                self.config.postgres_url(),
+                index,
+                self.config.user_storage_quota_mb,
+            )
                 .await?;
 
         let reply = control::Reply::Ok {
