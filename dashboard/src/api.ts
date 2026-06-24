@@ -14,6 +14,13 @@ export interface UserStorageStats {
   storageQuotaMb?: number | null;
 }
 
+export interface UserKeys {
+  index: number;
+  publicKey: string;
+  /** BIP39 recovery phrase (mnemonic seed) for this user. */
+  mnemonic: string;
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -34,10 +41,12 @@ async function postJson(url: string, body: unknown): Promise<ControlResponse> {
 }
 
 export const api = {
-  createHomeserver: (index: number) =>
-    postJson("/api/homeserver/create", { index }),
+  createHomeserver: (index: number, island = false) =>
+    postJson("/api/homeserver/create", { index, island }),
   seedHomeserver: (index: number) => postJson("/api/homeserver/seed", { index }),
   stopHomeserver: (index: number) => postJson("/api/homeserver/stop", { index }),
+  setIsland: (index: number, island: boolean) =>
+    postJson("/api/homeserver/island", { index, island }),
   addUser: (hs: number, profile: boolean) =>
     postJson("/api/user", { hs, profile }),
   follow: (from: number, target: string) =>
@@ -48,4 +57,6 @@ export const api = {
     postJson("/api/batch", req),
   fetchUsersStorage: (seed: number) =>
     getJson<UserStorageStats[]>(`/api/homeserver/${seed}/users/storage`),
+  fetchUserKeys: (index: number) =>
+    getJson<UserKeys>(`/api/user/${index}/keys`),
 };

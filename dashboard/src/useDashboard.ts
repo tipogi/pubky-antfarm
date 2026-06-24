@@ -18,6 +18,8 @@ export interface Homeserver {
   users: User[];
   /** Per-user storage quota in MB from antfarm config. Omitted when unlimited. */
   storageQuotaMb?: number;
+  /** When true, no one can reference this homeserver's users (isolated island). */
+  island: boolean;
 }
 
 export interface NetworkInfo {

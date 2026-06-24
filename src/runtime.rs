@@ -145,6 +145,7 @@ impl Runtime {
             for (index, label) in initial_assignments {
                 registry.assign(index, label);
             }
+            registry.islands = self.island_labels();
             self.publish_state(Some(&registry));
             let secs = self.config.simulator.interval_secs;
             let mut interval = tokio::time::interval(Duration::from_secs(secs));
@@ -213,8 +214,12 @@ impl Runtime {
     ) {
         let reply = match cmd.action {
             control::Action::Create => match cmd.index {
-                Some(i) => self.handle_create(i).await,
+                Some(i) => self.handle_create(i, cmd.island.unwrap_or(false)).await,
                 None => Err(anyhow::anyhow!("create requires --index")),
+            },
+            control::Action::Island => match cmd.index {
+                Some(i) => self.handle_island(i, cmd.island),
+                None => Err(anyhow::anyhow!("island requires --index")),
             },
             control::Action::Seed => match cmd.index {
                 Some(i) => self.handle_seed(i),
@@ -258,12 +263,17 @@ impl Runtime {
                 None => Err(anyhow::anyhow!("batch requires user index")),
             },
         };
+        // Keep the simulator's island cache aligned with homeserver state after
+        // any command (create-island, toggle, stop/seed, etc.).
+        if let Some(reg) = registry.as_deref_mut() {
+            reg.islands = self.island_labels();
+        }
         self.publish_state(registry.as_deref());
         let reply = reply.unwrap_or_else(|e| control::Reply::Err(format!("{e}")));
         let _ = cmd.reply.send(reply);
     }
 
-    async fn handle_create(&mut self, index: u8) -> anyhow::Result<control::Reply> {
+    async fn handle_create(&mut self, index: u8, island: bool) -> anyhow::Result<control::Reply> {
         if index == 0 {
             anyhow::bail!("index 0 is reserved for hs1 (the built-in homeserver)");
         }
@@ -291,15 +301,20 @@ impl Runtime {
                 self.config.postgres_url(),
                 index,
                 self.config.user_storage_quota_mb,
+                island,
             )
                 .await?;
 
+        let message = if island {
+            "homeserver created (dormant island — its users cannot be referenced)"
+        } else {
+            "homeserver created (dormant — use `seed` to start simulator activity)"
+        };
         let reply = control::Reply::Ok {
             label: hs.label.clone(),
             public_key: Some(hs.public_key.z32()),
             http_url: Some(hs.http_url.clone()),
-            message: "homeserver created (dormant — use `seed` to start simulator activity)"
-                .into(),
+            message: message.into(),
         };
 
         self.dormant.insert(index, hs);
@@ -367,6 +382,53 @@ impl Runtime {
             http_url: None,
             message: "homeserver stopped (removed from simulator, still reachable)".into(),
         })
+    }
+
+    /// Toggle or set a homeserver's island (isolation) mode. Works on both
+    /// active and dormant homeservers. When islanded, the simulator stops
+    /// referencing (following/tagging) that homeserver's users.
+    fn handle_island(
+        &mut self,
+        index: u8,
+        value: Option<bool>,
+    ) -> anyhow::Result<control::Reply> {
+        let label = Self::label_for(index);
+
+        let hs = self
+            .homeservers
+            .iter_mut()
+            .find(|hs| hs.label == label)
+            .or_else(|| self.dormant.get_mut(&index))
+            .ok_or_else(|| {
+                anyhow::anyhow!("{label} not found (neither active nor dormant) — create it first")
+            })?;
+
+        let island = value.unwrap_or(!hs.island);
+        hs.island = island;
+
+        let (glyph, state) = if island {
+            ("🏝".to_string(), "island enabled — users can no longer be referenced")
+        } else {
+            ("🌐".to_string(), "island disabled — users can be referenced again")
+        };
+        println!("  {} {} {}", glyph, label.white().bold(), state.dimmed());
+
+        Ok(control::Reply::Ok {
+            label,
+            public_key: None,
+            http_url: None,
+            message: state.into(),
+        })
+    }
+
+    /// Labels of every homeserver (active or dormant) currently in island mode.
+    fn island_labels(&self) -> std::collections::HashSet<String> {
+        self.homeservers
+            .iter()
+            .chain(self.dormant.values())
+            .filter(|hs| hs.island)
+            .map(|hs| hs.label.clone())
+            .collect()
     }
 
     async fn handle_user(

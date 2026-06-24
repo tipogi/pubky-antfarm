@@ -18,6 +18,9 @@ pub struct Homeserver {
     pub database_url: String,
     /// Configured per-user storage quota in MB (`0` = unlimited).
     pub storage_quota_mb: u64,
+    /// When `true`, no one may reference this homeserver's users — the simulator
+    /// will not follow or tag them (nor tag their posts). An isolated "island".
+    pub island: bool,
 }
 
 fn admin_url(hs: &HomeserverApp) -> String {
@@ -58,6 +61,7 @@ pub async fn start_all(
         admin_url: hs1_admin,
         database_url: hs1_db,
         storage_quota_mb: quota_mb,
+        island: false,
     }];
     for entry in &config.homeservers {
         let conn_str = crate::db::connection_string(config.postgres_url(), &entry.label);
@@ -73,6 +77,7 @@ pub async fn start_all(
             admin_url: admin_url(hs),
             database_url: conn_str,
             storage_quota_mb: quota_mb,
+            island: false,
         });
     }
 
@@ -98,6 +103,7 @@ pub async fn create_dynamic(
     pg_url: &str,
     index: u8,
     storage_quota_mb: u64,
+    island: bool,
 ) -> anyhow::Result<Homeserver> {
     let label = format!("hs{}", index + 1);
     let seed_bytes = [index; 32];
@@ -116,6 +122,7 @@ pub async fn create_dynamic(
         admin_url: admin_url(hs),
         database_url: conn_str,
         storage_quota_mb,
+        island,
     })
 }
 

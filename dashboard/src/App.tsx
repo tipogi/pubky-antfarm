@@ -14,7 +14,9 @@ import { useActivity } from "./useActivity";
 import { api, type ControlResponse } from "./api";
 import { GraphView } from "./GraphView";
 import { CreateHomeserverModal, AddHomeserverTile } from "./CreateHomeserverModal";
+import { CreateUserModal, AddUserKeyButton } from "./CreateUserModal";
 import { HomeserverStatusMenu } from "./HomeserverStatusMenu";
+import { IslandPill } from "./IslandPill";
 import { AnalyticsView } from "./AnalyticsView";
 import { HomeserverUsersView } from "./HomeserverUsersView";
 import { ToastNotice, type ToastData } from "./ToastNotice";
@@ -373,84 +375,102 @@ function HomeserverDetailHeader({
   onPkarrRecord: () => void | Promise<void>;
   onAction: RunAction;
 }) {
+  const [createUserOpen, setCreateUserOpen] = useState(false);
   const { color, keyColor } = hubColorFor(hs.seed);
   const unlimited = maxUsers === 0;
   const atCapacity = !unlimited && hs.userCount >= maxUsers;
   const pkarrUrl = `${pkarrRelay.replace(/\/$/, "")}/${hs.publicKey}`;
 
   return (
-    <header
-      className="content-head hs-detail-head"
-      style={
-        {
-          "--hs-accent": color,
-          "--hs-key": keyColor,
-        } as CSSProperties
-      }
-    >
-      <button type="button" className="hs-detail-back" onClick={onBack}>
-        <ChevronLeftIcon />
-        <span>Homeservers</span>
-      </button>
+    <>
+      <header
+        className="content-head hs-detail-head"
+        style={
+          {
+            "--hs-accent": color,
+            "--hs-key": keyColor,
+          } as CSSProperties
+        }
+      >
+        <button type="button" className="hs-detail-back" onClick={onBack}>
+          <ChevronLeftIcon />
+          <span>Homeservers</span>
+        </button>
 
-      <div className="hs-detail-hero">
-        <span className="hs-detail-avatar" aria-hidden>
-          <svg viewBox={ROOT_VIEWBOX} className="hs-card-avatar-icon">
-            <RootPaths />
-          </svg>
-        </span>
+        <div className="hs-detail-hero">
+          <span className="hs-detail-avatar" aria-hidden>
+            <svg viewBox={ROOT_VIEWBOX} className="hs-card-avatar-icon">
+              <RootPaths />
+            </svg>
+          </span>
 
-        <div className="hs-detail-body">
-          <div className="hs-detail-title-row">
-            <h1>{hs.label}</h1>
-            <HomeserverStatusMenu hs={hs} busy={busy} onAction={onAction} />
-          </div>
+          <div className="hs-detail-body">
+            <div className="hs-detail-title-row">
+              <h1>{hs.label}</h1>
+              <HomeserverStatusMenu hs={hs} busy={busy} onAction={onAction} />
+              <IslandPill hs={hs} busy={busy} onAction={onAction} />
+            </div>
 
-          <button
-            type="button"
-            className="hs-detail-key-row"
-            title="Copy public key"
-            onClick={() => void onCopyKey(hs.publicKey)}
-          >
-            <KeyRowIcon />
-            <span className="hs-detail-key-full">{hs.publicKey}</span>
-          </button>
+            <button
+              type="button"
+              className="hs-detail-key-row"
+              title="Copy public key"
+              onClick={() => void onCopyKey(hs.publicKey)}
+            >
+              <KeyRowIcon />
+              <span className="hs-detail-key-full">{hs.publicKey}</span>
+            </button>
 
-          <div className="hs-detail-meta">
-            <span className="hs-detail-meta-item">seed {hs.seed}</span>
-            <span className="hs-detail-meta-item">
-              {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
-            </span>
-            <span className={`hs-detail-meta-item ${atCapacity ? "warn" : ""}`}>
-              {unlimited
-                ? "Unlimited capacity"
-                : `${hs.userCount} / ${maxUsers} capacity`}
-            </span>
-            <span className="hs-detail-meta-links">
-              <a
-                className="hs-detail-meta-item hs-detail-open"
-                href={hs.httpUrl}
-                target="_blank"
-                rel="noreferrer"
-                title="Open homeserver URL"
-              >
-                <GlobeLinkIcon />
-                Open
-              </a>
-              <button
-                type="button"
-                className="hs-detail-meta-item hs-detail-pkarr"
-                title={`View pkarr record (${pkarrUrl})`}
-                onClick={() => void onPkarrRecord()}
-              >
-                <PkarrRecordIcon className="hs-link-icon" />
-                Pkarr
-              </button>
-            </span>
+            <div className="hs-detail-meta">
+              <span className="hs-detail-meta-item">seed {hs.seed}</span>
+              <span className="hs-detail-meta-item">
+                {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
+              </span>
+              <span className={`hs-detail-meta-item ${atCapacity ? "warn" : ""}`}>
+                {unlimited
+                  ? "Unlimited capacity"
+                  : `${hs.userCount} / ${maxUsers} capacity`}
+              </span>
+              <span className="hs-detail-meta-links">
+                <a
+                  className="hs-detail-meta-item hs-detail-open"
+                  href={hs.httpUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open homeserver URL"
+                >
+                  <GlobeLinkIcon />
+                  Open
+                </a>
+                <button
+                  type="button"
+                  className="hs-detail-meta-item hs-detail-pkarr"
+                  title={`View pkarr record (${pkarrUrl})`}
+                  onClick={() => void onPkarrRecord()}
+                >
+                  <PkarrRecordIcon className="hs-link-icon" />
+                  Pkarr
+                </button>
+                <AddUserKeyButton
+                  disabled={busy}
+                  onClick={() => setCreateUserOpen(true)}
+                />
+              </span>
+            </div>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {createUserOpen && (
+        <CreateUserModal
+          hs={hs}
+          maxUsers={maxUsers}
+          busy={busy}
+          onClose={() => setCreateUserOpen(false)}
+          onAction={onAction}
+        />
+      )}
+    </>
   );
 }
 
@@ -504,6 +524,14 @@ function HomeserverCard({
               <span className={`hs-card-pill-dot ${hs.status}`} aria-hidden />
               {hs.status}
             </span>
+            {hs.island && (
+              <span
+                className="hs-card-pill hs-island-pill island-on"
+                title="Island — users can't be referenced"
+              >
+                Island
+              </span>
+            )}
           </div>
           <span className="hs-card-seed">seed {hs.seed}</span>
         </div>

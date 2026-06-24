@@ -54,9 +54,10 @@ pub async fn listen(addr: String, tx: mpsc::Sender<Cmd>) {
                 "user" => Action::User,
                 "follow" => Action::Follow,
                 "tag" => Action::Tag,
+                "island" => Action::Island,
                 other => {
                     let resp = Response::from(Reply::Err(format!(
-                        "unknown action: {other} (expected \"create\", \"seed\", \"stop\", \"user\", \"follow\", or \"tag\")"
+                        "unknown action: {other} (expected \"create\", \"seed\", \"stop\", \"user\", \"follow\", \"tag\", or \"island\")"
                     )));
                     let _ = writer
                         .write_all(serde_json::to_string(&resp).unwrap().as_bytes())
@@ -77,6 +78,7 @@ pub async fn listen(addr: String, tx: mpsc::Sender<Cmd>) {
                 label: None,
                 batch_posts: 0,
                 batch_tags: 0,
+                island: req.island,
                 reply: reply_tx,
             };
 

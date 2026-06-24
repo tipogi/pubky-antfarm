@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use colored::Colorize;
 use pubky_testnet::pubky::{PublicKey, Pubky};
@@ -16,6 +16,9 @@ pub struct Registry {
     /// Directed follow relationships as (follower index, followee index).
     /// Aggregated into homeserver-level edges for the network graph.
     pub follows: Vec<(usize, usize)>,
+    /// Labels of homeservers in island mode. Users on these homeservers cannot
+    /// be referenced (followed/tagged) by the simulator.
+    pub islands: HashSet<String>,
 }
 
 impl Registry {
@@ -28,7 +31,56 @@ impl Registry {
             posts,
             assignments: HashMap::new(),
             follows: Vec::new(),
+            islands: HashSet::new(),
         }
+    }
+
+    /// Whether a user index lives on an island homeserver (cannot be referenced).
+    fn is_island_user(&self, index: usize) -> bool {
+        self.assignments
+            .get(&index)
+            .is_some_and(|label| self.islands.contains(label))
+    }
+
+    /// Pick a random user that is allowed to be referenced (not on an island).
+    fn random_referable_user(&self) -> Option<(usize, PublicKey)> {
+        if self.islands.is_empty() {
+            return self.user_keys.random_user();
+        }
+        let eligible: Vec<(usize, &PublicKey)> = self
+            .user_keys
+            .all()
+            .filter(|(index, _)| !self.is_island_user(*index))
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        let idx = rand::rng().random_range(0..eligible.len());
+        let (index, pk) = eligible[idx];
+        Some((index, pk.clone()))
+    }
+
+    /// Pick a random post whose author is allowed to be referenced.
+    fn random_referable_post(&self) -> Option<&(PublicKey, String)> {
+        if self.islands.is_empty() {
+            return self.random_post();
+        }
+        let eligible: Vec<&(PublicKey, String)> = self
+            .posts
+            .iter()
+            .filter(|(author_pk, _)| {
+                match self.user_keys.index_for_z32(&author_pk.z32()) {
+                    Some(index) => !self.is_island_user(index),
+                    // Unknown author (e.g. seeded before assignment) — allow.
+                    None => true,
+                }
+            })
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        let idx = rand::rng().random_range(0..eligible.len());
+        Some(eligible[idx])
     }
 
     /// Record which homeserver a user index lives on.
@@ -116,7 +168,8 @@ pub async fn tick(
         let Some((follower_idx, _)) = registry.user_keys.random_user() else {
             continue;
         };
-        let Some((followee_idx, followee_pk)) = registry.user_keys.random_user() else {
+        // The followee must be referable — island users cannot be followed.
+        let Some((followee_idx, followee_pk)) = registry.random_referable_user() else {
             continue;
         };
         let follower_keypair = social::UserKeys::keypair_at(follower_idx);
@@ -236,13 +289,14 @@ async fn create_one_tag_as<R: rand::RngExt>(
     let keypair = social::UserKeys::keypair_at(from);
 
     let tag_user: bool = rng.random();
+    // Targets must be referable — island users (and their posts) are off-limits.
     let target_uri = if tag_user {
-        if let Some((_, target_pk)) = registry.user_keys.random_user() {
+        if let Some((_, target_pk)) = registry.random_referable_user() {
             format!("pubky://{}/pub/pubky.app/profile.json", target_pk.z32())
         } else {
             return 0;
         }
-    } else if let Some((author_pk, post_id)) = registry.random_post() {
+    } else if let Some((author_pk, post_id)) = registry.random_referable_post() {
         format!("pubky://{}/pub/pubky.app/posts/{}", author_pk.z32(), post_id)
     } else {
         return 0;

@@ -44,6 +44,8 @@ pub struct HomeserverInfo {
     /// Per-user storage quota in MB. Omitted when unlimited (`0`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub storage_quota_mb: Option<u64>,
+    /// When `true`, no one may reference this homeserver's users (isolated island).
+    pub island: bool,
     #[serde(skip_serializing)]
     pub admin_url: String,
     #[serde(skip_serializing)]
@@ -65,6 +67,7 @@ impl HomeserverInfo {
             user_count: users.len(),
             users,
             storage_quota_mb: (hs.storage_quota_mb > 0).then_some(hs.storage_quota_mb),
+            island: hs.island,
             admin_url: hs.admin_url.clone(),
             database_url: hs.database_url.clone(),
         }

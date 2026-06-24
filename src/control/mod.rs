@@ -13,6 +13,8 @@ pub enum Action {
     Follow,
     Tag,
     Batch,
+    /// Toggle/set a homeserver's island (isolation) mode.
+    Island,
 }
 
 pub struct Cmd {
@@ -28,6 +30,9 @@ pub struct Cmd {
     pub batch_posts: u32,
     /// Manual batch: number of tags to create (0 = skip).
     pub batch_tags: u32,
+    /// Island mode. For `Create`, the initial state (default `false`). For
+    /// `Island`, the desired state — `None` toggles the current value.
+    pub island: Option<bool>,
     pub reply: oneshot::Sender<Reply>,
 }
 
@@ -50,6 +55,8 @@ pub(crate) struct Request {
     pub hs: Option<u8>,
     #[serde(default)]
     pub profile: Option<bool>,
+    #[serde(default)]
+    pub island: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]

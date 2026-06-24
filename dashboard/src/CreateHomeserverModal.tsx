@@ -82,6 +82,7 @@ export function CreateHomeserverModal({
 }) {
   const [seed, setSeed] = useState(String(nextIndex));
   const [start, setStart] = useState<HomeserverStart>("dormant");
+  const [island, setIsland] = useState(false);
   const seedRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -100,7 +101,7 @@ export function CreateHomeserverModal({
     if (busy || !seedValid) return;
 
     onAction(async () => {
-      const created = await api.createHomeserver(seedNum);
+      const created = await api.createHomeserver(seedNum, island);
       if (!created.ok || start === "dormant") {
         if (created.ok) onClose();
         return created;
@@ -194,6 +195,21 @@ export function CreateHomeserverModal({
               </span>
             </label>
           </fieldset>
+
+          <label className="hs-batch-row hs-create-user-profile hs-island-option enabled">
+            <span className="hs-batch-row-check">
+              <input
+                type="checkbox"
+                checked={island}
+                disabled={busy}
+                onChange={(e) => setIsland(e.target.checked)}
+              />
+              <span className="hs-batch-row-label">Island (isolated)</span>
+            </span>
+            <span className="hs-create-user-profile-hint">
+              Other users can't follow or tag this homeserver's users
+            </span>
+          </label>
 
           <div className="hs-action-modal-foot">
             <button

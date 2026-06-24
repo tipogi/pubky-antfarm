@@ -4,13 +4,14 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use colored::Colorize;
 use futures_util::stream::Stream;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
+use crate::commands::keygen::keypair_from_index;
 use crate::control;
 
 /// Built dashboard SPA, resolved at compile time so it works no matter what
@@ -53,7 +54,9 @@ pub async fn serve(
         .route("/api/homeserver/create", post(create_homeserver))
         .route("/api/homeserver/seed", post(seed_homeserver))
         .route("/api/homeserver/stop", post(stop_homeserver))
+        .route("/api/homeserver/island", post(set_island))
         .route("/api/homeserver/:seed/users/storage", get(user_storage))
+        .route("/api/user/:index/keys", get(user_keys))
         .route("/api/user", post(create_user))
         .route("/api/follow", post(create_follow))
         .route("/api/tag", post(create_tag))
@@ -138,6 +141,21 @@ struct IndexReq {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CreateReq {
+    index: u8,
+    #[serde(default)]
+    island: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IslandReq {
+    index: u8,
+    island: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UserReq {
     hs: u8,
     #[serde(default)]
@@ -173,7 +191,7 @@ struct BatchReq {
 
 async fn create_homeserver(
     State(app): State<AppState>,
-    Json(req): Json<IndexReq>,
+    Json(req): Json<CreateReq>,
 ) -> Json<control::Response> {
     Json(send_cmd(
         &app.ctrl_tx,
@@ -186,6 +204,27 @@ async fn create_homeserver(
         None,
         0,
         0,
+        Some(req.island),
+    )
+    .await)
+}
+
+async fn set_island(
+    State(app): State<AppState>,
+    Json(req): Json<IslandReq>,
+) -> Json<control::Response> {
+    Json(send_cmd(
+        &app.ctrl_tx,
+        control::Action::Island,
+        None,
+        Some(req.index),
+        false,
+        None,
+        None,
+        None,
+        0,
+        0,
+        Some(req.island),
     )
     .await)
 }
@@ -205,6 +244,7 @@ async fn seed_homeserver(
         None,
         0,
         0,
+        None,
     )
     .await)
 }
@@ -224,6 +264,7 @@ async fn stop_homeserver(
         None,
         0,
         0,
+        None,
     )
     .await)
 }
@@ -248,6 +289,26 @@ async fn user_storage(
     )
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserKeysInfo {
+    index: usize,
+    public_key: String,
+    mnemonic: String,
+}
+
+/// Derive the deterministic BIP39 mnemonic (recovery seed) and public key for a
+/// user index. Keys are a pure function of the index, so this needs no runtime
+/// state. Intended for the local testnet dashboard only.
+async fn user_keys(Path(index): Path<usize>) -> Json<UserKeysInfo> {
+    let (mnemonic, keypair) = keypair_from_index(index);
+    Json(UserKeysInfo {
+        index,
+        public_key: keypair.public_key().z32(),
+        mnemonic: mnemonic.words().collect::<Vec<_>>().join(" "),
+    })
+}
+
 async fn create_user(
     State(app): State<AppState>,
     Json(req): Json<UserReq>,
@@ -264,6 +325,7 @@ async fn create_user(
             None,
             0,
             0,
+            None,
         )
         .await,
     )
@@ -285,6 +347,7 @@ async fn create_follow(
             None,
             0,
             0,
+            None,
         )
         .await,
     )
@@ -306,6 +369,7 @@ async fn create_tag(
             Some(req.label),
             0,
             0,
+            None,
         )
         .await,
     )
@@ -327,12 +391,14 @@ async fn create_batch(
             None,
             req.posts,
             req.tags,
+            None,
         )
         .await,
     )
 }
 
 /// Dispatch a command on the runtime's control channel and await its reply.
+#[allow(clippy::too_many_arguments)]
 async fn send_cmd(
     tx: &mpsc::Sender<control::Cmd>,
     action: control::Action,
@@ -344,6 +410,7 @@ async fn send_cmd(
     label: Option<String>,
     batch_posts: u32,
     batch_tags: u32,
+    island: Option<bool>,
 ) -> control::Response {
     let (reply_tx, reply_rx) = oneshot::channel();
     let cmd = control::Cmd {
@@ -356,6 +423,7 @@ async fn send_cmd(
         label,
         batch_posts,
         batch_tags,
+        island,
         reply: reply_tx,
     };
 

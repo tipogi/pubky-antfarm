@@ -10,6 +10,8 @@ import type { RunAction } from "./App";
 import { BatchEventsModal } from "./BatchEventsModal";
 import { PkarrRecordModal } from "./PkarrRecordModal";
 import { PkarrRecordIcon } from "./PkarrRecordIcon";
+import { EventActionIcon, UserEventsModal } from "./UserEventsModal";
+import { DetailsActionIcon, UserDetailsModal } from "./UserDetailsModal";
 import { loadProfile, loadAvatar, type UserStorageContext } from "./pubky";
 import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
@@ -197,13 +199,17 @@ function UserActionButtons({
   onFollow,
   onTag,
   onBatch,
+  onEvents,
   onPkarr,
+  onDetails,
 }: {
   disabled: boolean;
   onFollow: () => void;
   onTag: () => void;
   onBatch: () => void;
+  onEvents: () => void;
   onPkarr: () => void;
+  onDetails: () => void;
 }) {
   return (
     <div className="hs-user-action-btns" role="group" aria-label="User actions">
@@ -247,6 +253,18 @@ function UserActionButtons({
         type="button"
         className="hs-user-action-trigger"
         disabled={disabled}
+        onClick={onEvents}
+        title="View user events"
+      >
+        <span className="hs-user-action-glyph">
+          <EventActionIcon className="hs-user-action-icon" />
+        </span>
+        <span className="hs-user-action-label">Event</span>
+      </button>
+      <button
+        type="button"
+        className="hs-user-action-trigger"
+        disabled={disabled}
         onClick={onPkarr}
         title="View pkarr record"
       >
@@ -254,6 +272,18 @@ function UserActionButtons({
           <PkarrActionIcon />
         </span>
         <span className="hs-user-action-label">Pkarr</span>
+      </button>
+      <button
+        type="button"
+        className="hs-user-action-trigger"
+        disabled={disabled}
+        onClick={onDetails}
+        title="View user details and recovery phrase"
+      >
+        <span className="hs-user-action-glyph">
+          <DetailsActionIcon className="hs-user-action-icon" />
+        </span>
+        <span className="hs-user-action-label">Details</span>
       </button>
     </div>
   );
@@ -407,6 +437,17 @@ export function HomeserverUsersView({
     kindLabel: string;
     publicKey: string;
   } | null>(null);
+  const [eventsModal, setEventsModal] = useState<{
+    label: string;
+    kindLabel: string;
+    publicKey: string;
+  } | null>(null);
+  const [detailsModal, setDetailsModal] = useState<{
+    label: string;
+    kindLabel: string;
+    userIndex: number;
+    publicKey: string;
+  } | null>(null);
 
   // Stable key so SSE state refreshes (new `users` array refs) don't retrigger fetches.
   const usersKey = useMemo(
@@ -488,6 +529,31 @@ export function HomeserverUsersView({
     setPkarrModal({
       label: displayName,
       kindLabel: `User #${userIndex} · ${hs.label}`,
+      publicKey,
+    });
+  };
+
+  const openEventsModal = (
+    userIndex: number,
+    displayName: string,
+    publicKey: string
+  ) => {
+    setEventsModal({
+      label: displayName,
+      kindLabel: `User #${userIndex} · ${hs.label}`,
+      publicKey,
+    });
+  };
+
+  const openDetailsModal = (
+    userIndex: number,
+    displayName: string,
+    publicKey: string
+  ) => {
+    setDetailsModal({
+      label: displayName,
+      kindLabel: `User #${userIndex} · ${hs.label}`,
+      userIndex,
       publicKey,
     });
   };
@@ -601,8 +667,14 @@ export function HomeserverUsersView({
                           onFollow={() => openModal("follow", user.index, displayName)}
                           onTag={() => openModal("tag", user.index, displayName)}
                           onBatch={() => openModal("batch", user.index, displayName)}
+                          onEvents={() =>
+                            openEventsModal(user.index, displayName, user.publicKey)
+                          }
                           onPkarr={() =>
                             openPkarrModal(user.index, displayName, user.publicKey)
+                          }
+                          onDetails={() =>
+                            openDetailsModal(user.index, displayName, user.publicKey)
                           }
                         />
                       </td>
@@ -646,6 +718,28 @@ export function HomeserverUsersView({
           publicKey={pkarrModal.publicKey}
           pkarrRelay={pkarrRelay}
           onClose={() => setPkarrModal(null)}
+        />
+      )}
+
+      {eventsModal && (
+        <UserEventsModal
+          label={eventsModal.label}
+          kindLabel={eventsModal.kindLabel}
+          seed={hs.seed}
+          userPk={eventsModal.publicKey}
+          homeserverUrl={hs.httpUrl}
+          onClose={() => setEventsModal(null)}
+        />
+      )}
+
+      {detailsModal && (
+        <UserDetailsModal
+          label={detailsModal.label}
+          kindLabel={detailsModal.kindLabel}
+          seed={hs.seed}
+          userIndex={detailsModal.userIndex}
+          publicKey={detailsModal.publicKey}
+          onClose={() => setDetailsModal(null)}
         />
       )}
     </div>

@@ -25,6 +25,24 @@ const profileCache = new Map<string, Promise<Profile | null>>();
 const avatarCache = new Map<string, Promise<string | null>>();
 const tagsCache = new Map<string, Promise<string[]>>();
 
+export const USER_EVENTS_PAGE_SIZE = 200;
+
+export interface UserEvent {
+  /** "PUT" or "DEL". */
+  type: string;
+  uri: string;
+  path: string;
+  contentHash?: string;
+  /** Homeserver event cursor (monotonic id, newest-first when reversed). */
+  cursor?: string;
+}
+
+export interface UserEventsResult {
+  ok: boolean;
+  events: UserEvent[];
+  error?: string;
+}
+
 // Shared SDK client wired for the local testnet. We use its low-level
 // `client.fetch` (a raw HTTP bridge) against direct homeserver URLs, rather than
 // `publicStorage` with `pubky://…` addresses: the latter forces browser-side
@@ -136,6 +154,96 @@ export function loadAvatar(
     avatarCache.set(key, p);
   }
   return p;
+}
+
+/**
+ * Parse the homeserver `/events-stream` SSE body into events.
+ *
+ * Each event is a block of `data:` lines separated by a blank line:
+ *   event: PUT
+ *   data: pubky://<pk>/pub/posts/003
+ *   data: cursor: 42
+ *   data: content_hash: <base64>
+ *
+ * The first `data:` line is the full resource URL; subsequent ones are the
+ * `cursor:`/`content_hash:` fields.
+ */
+function parseEventStream(body: string): UserEvent[] {
+  const events: UserEvent[] = [];
+  let type: string | null = null;
+  let uri: string | null = null;
+  let cursor: string | undefined;
+  let contentHash: string | undefined;
+
+  const flush = () => {
+    if (type && uri) {
+      const ref = parsePubkyUri(uri);
+      events.push({
+        type,
+        uri,
+        path: ref?.path ?? uri,
+        cursor,
+        contentHash,
+      });
+    }
+    type = null;
+    uri = null;
+    cursor = undefined;
+    contentHash = undefined;
+  };
+
+  for (const raw of body.split("\n")) {
+    const line = raw.trimEnd();
+    if (line === "") {
+      flush();
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      type = line.slice("event:".length).trim();
+    } else if (line.startsWith("data:")) {
+      const value = line.slice("data:".length).trim();
+      if (value.startsWith("cursor:")) {
+        cursor = value.slice("cursor:".length).trim();
+      } else if (value.startsWith("content_hash:")) {
+        contentHash = value.slice("content_hash:".length).trim();
+      } else if (value) {
+        uri = value;
+      }
+    }
+  }
+  flush();
+  return events;
+}
+
+/**
+ * Read a user's recent homeserver events directly from their homeserver via the
+ * SDK client, newest-first. Uses the `/events-stream` endpoint with `reverse`
+ * (so the stream sends history then closes) filtered to this single user.
+ *
+ * Always fetched fresh from the homeserver — events are intentionally not cached
+ * so each click reflects the live state.
+ */
+export async function loadUserEvents(
+  userPk: string,
+  homeserverUrl: string
+): Promise<UserEventsResult> {
+  try {
+    const res = await hsFetch(
+      directUrl(homeserverUrl, userPk, "/events-stream", {
+        user: userPk,
+        reverse: "true",
+        limit: String(USER_EVENTS_PAGE_SIZE),
+      })
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { ok: true, events: parseEventStream(await res.text()) };
+  } catch (e) {
+    return {
+      ok: false,
+      events: [] as UserEvent[],
+      error: e instanceof Error ? e.message : "Failed to load events",
+    };
+  }
 }
 
 /** List the unique tag labels a user has authored, read directly from their homeserver. */
