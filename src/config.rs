@@ -192,6 +192,10 @@ impl HomeserverEntry {
 pub struct SimulatorConfig {
     #[serde(default = "SimulatorConfig::default_interval")]
     pub interval_secs: u64,
+    /// Maximum users per homeserver. `0` = unlimited. When a homeserver is at
+    /// capacity, user slots in a tick are redirected as extra posts/tags/follows.
+    #[serde(default)]
+    pub max_users_per_homeserver: u32,
     #[serde(default = "SimulatorConfig::default_users")]
     pub users_per_tick: [u32; 2],
     #[serde(default = "SimulatorConfig::default_posts")]
@@ -224,6 +228,7 @@ impl Default for SimulatorConfig {
     fn default() -> Self {
         Self {
             interval_secs: Self::default_interval(),
+            max_users_per_homeserver: 0,
             users_per_tick: Self::default_users(),
             posts_per_tick: Self::default_posts(),
             tags_per_tick: Self::default_tags(),

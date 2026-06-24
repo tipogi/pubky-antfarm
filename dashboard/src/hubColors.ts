@@ -1,21 +1,19 @@
-// Graph node colors — UI chrome keeps yellow accent in styles.css.
-// Order: main three → orange & purple → indigo (hs6) → slate (hs7) → orange & purple again (hs8–hs9).
+// Per-homeserver accent colors — spread across the hue wheel to avoid blue clusters.
+// Order for seeds 0–7: red → teal → orange → green → magenta → amber → rust → violet.
 export const HUB_THEMES: readonly { hub: string; key: string }[] = [
-  { hub: "#293681", key: "#547792" }, // hs1 navy
-  { hub: "#E05454", key: "#FF8B5A" }, // hs2 red
-  { hub: "#1F6F5F", key: "#5DD3B6" }, // hs3 teal
+  { hub: "#E05454", key: "#FF8B7A" }, // 0 red
+  { hub: "#1F6F5F", key: "#5DD3B6" }, // 1 teal
+  { hub: "#FF9B51", key: "#FFBE7D" }, // 2 orange
+  { hub: "#7CB342", key: "#A5D66A" }, // 3 green
+  { hub: "#D946A8", key: "#F082C8" }, // 4 magenta
+  { hub: "#E6A817", key: "#F5C842" }, // 5 amber
+  { hub: "#C45C3E", key: "#E8896E" }, // 6 rust
+  { hub: "#7B4FD9", key: "#A07FEE" }, // 7 violet
 
-  { hub: "#FF9B51", key: "#FF9B51" }, // hs4 orange
-  { hub: "#4D2FB2", key: "#4D2FB2" }, // hs5 purple
-
-  { hub: "#3D45AA", key: "#547792" }, // hs6 indigo
-  { hub: "#547792", key: "#4274D9" }, // hs7 slate
-
-  { hub: "#FF8B5A", key: "#FF8B5A" }, // hs8 orange
-  { hub: "#4D2FB2", key: "#4D2FB2" }, // hs9 purple
-
-  { hub: "#FF4400", key: "#FF9B51" }, // hs10+
-  { hub: "#5DD3B6", key: "#6FCF97" },
+  { hub: "#22A6B3", key: "#5DD5E0" }, // 8 cyan
+  { hub: "#E8788A", key: "#F5A0AE" }, // 9 rose
+  { hub: "#6B8E23", key: "#9CB865" }, // 10 olive
+  { hub: "#B83280", key: "#E060A8" }, // 11 fuchsia
 ];
 
 export function hubColorFor(seed: number): { color: string; keyColor: string } {

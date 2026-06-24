@@ -29,6 +29,7 @@ export type Range = [number, number];
 
 export interface SimulatorInfo {
   intervalSecs: number;
+  maxUsersPerHomeserver: number;
   usersPerTick: Range;
   postsPerTick: Range;
   tagsPerTick: Range;

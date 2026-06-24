@@ -1,28 +1,32 @@
-import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { CopyButton } from "./CopyButton";
 import {
   useDashboard,
-  type ActivityTotals,
   type Homeserver,
-  type NetworkInfo,
-  type Range,
-  type SimulatorInfo,
 } from "./useDashboard";
-import { useActivity, type TickEvent } from "./useActivity";
+import { useActivity } from "./useActivity";
 import { api, type ControlResponse } from "./api";
 import { GraphView } from "./GraphView";
+import { CreateHomeserverModal, AddHomeserverTile } from "./CreateHomeserverModal";
+import { HomeserverStatusMenu } from "./HomeserverStatusMenu";
+import { AnalyticsView } from "./AnalyticsView";
 import { HomeserverUsersView } from "./HomeserverUsersView";
+import { ToastNotice, type ToastData } from "./ToastNotice";
+import { PkarrRecordModal } from "./PkarrRecordModal";
+import { PkarrRecordIcon } from "./PkarrRecordIcon";
 import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
+import { loadProfile, loadAvatar, type UserStorageContext } from "./pubky";
 
 export type RunAction = (fn: () => Promise<ControlResponse>) => void;
 
 type View = "graph" | "homeservers" | "stats";
-
-interface Toast {
-  ok: boolean;
-  text: string;
-}
 
 export default function App() {
   const { state, connected } = useDashboard();
@@ -30,32 +34,58 @@ export default function App() {
   const [drawerHs, setDrawerHs] = useState<Homeserver | null>(null);
   const [detailHs, setDetailHs] = useState<Homeserver | null>(null);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
   const [view, setView] = useState<View>("graph");
+  const [createHsOpen, setCreateHsOpen] = useState(false);
+  const [pkarrModal, setPkarrModal] = useState<{
+    label: string;
+    seed: number;
+    publicKey: string;
+    pkarrRelay: string;
+  } | null>(null);
 
   const homeservers = state?.homeservers ?? [];
   const active = homeservers.filter((hs) => hs.status === "active").length;
   const totalUsers = homeservers.reduce((sum, hs) => sum + hs.userCount, 0);
+  const topUserCount = homeservers.reduce(
+    (max, hs) => Math.max(max, hs.userCount),
+    0
+  );
   const nextIndex =
     homeservers.reduce((max, hs) => Math.max(max, hs.seed), 0) + 1;
 
   useEffect(() => {
     if (view !== "graph") setDrawerHs(null);
-    if (view !== "homeservers") setDetailHs(null);
+    if (view !== "homeservers") {
+      setDetailHs(null);
+      setCreateHsOpen(false);
+    }
   }, [view]);
 
   const resolveHs = (hs: Homeserver) =>
     homeservers.find((h) => h.label === hs.label) ?? hs;
 
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  const showToast = (next: ToastData) => setToast(next);
+
   const runAction: RunAction = async (fn) => {
     setBusy(true);
     const res = await fn();
     setBusy(false);
-    setToast({
+    showToast({
       ok: res.ok,
       text: res.ok ? res.message ?? "Done" : res.error ?? "Failed",
     });
-    window.setTimeout(() => setToast(null), 4000);
+  };
+
+  const copyKey = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key);
+      showToast({ ok: true, text: "Public key copied to clipboard" });
+    } catch {
+      showToast({ ok: false, text: "Could not copy to clipboard" });
+    }
   };
 
   return (
@@ -118,33 +148,44 @@ export default function App() {
           </div>
         ) : view === "homeservers" ? (
           <>
-            <header className="content-head">
-              <div className="content-heading">
-                <h1>{detailHs ? detailHs.label : "Homeservers"}</h1>
-                <p className="content-sub">
-                  {detailHs ? (
-                    <>
-                      seed {detailHs.seed} · {detailHs.userCount}{" "}
-                      {detailHs.userCount === 1 ? "user" : "users"} ·{" "}
-                      {detailHs.status}
-                    </>
-                  ) : (
-                    <>
-                      {homeservers.length}{" "}
-                      {homeservers.length === 1 ? "homeserver" : "homeservers"} ·{" "}
-                      {active} active · {totalUsers} users
-                    </>
-                  )}
-                </p>
-              </div>
-            </header>
+            {detailHs ? (
+              <HomeserverDetailHeader
+                hs={resolveHs(detailHs)}
+                maxUsers={state.simulator.maxUsersPerHomeserver}
+                pkarrRelay={state.network.pkarrRelay}
+                busy={busy}
+                onBack={() => setDetailHs(null)}
+                onCopyKey={copyKey}
+                onAction={runAction}
+                onPkarrRecord={() =>
+                  setPkarrModal({
+                    label: resolveHs(detailHs).label,
+                    seed: resolveHs(detailHs).seed,
+                    publicKey: resolveHs(detailHs).publicKey,
+                    pkarrRelay: state.network.pkarrRelay,
+                  })
+                }
+              />
+            ) : (
+              <header className="content-head">
+                <div className="content-heading">
+                  <h1>Homeservers</h1>
+                  <p className="content-sub">
+                    {homeservers.length}{" "}
+                    {homeservers.length === 1 ? "homeserver" : "homeservers"} ·{" "}
+                    {active} active · {totalUsers} users
+                  </p>
+                </div>
+              </header>
+            )}
             <div className="content-body">
-              {homeservers.length === 0 ? (
-                <p className="muted">No homeservers running.</p>
-              ) : detailHs ? (
+              {detailHs ? (
                 <HomeserverUsersView
                   hs={resolveHs(detailHs)}
-                  onBack={() => setDetailHs(null)}
+                  pkarrRelay={state.network.pkarrRelay}
+                  busy={busy}
+                  onAction={runAction}
+                  onCopyKey={copyKey}
                 />
               ) : (
                 <div className="grid">
@@ -152,23 +193,31 @@ export default function App() {
                     <HomeserverCard
                       key={hs.label}
                       hs={hs}
+                      maxUsers={state.simulator.maxUsersPerHomeserver}
+                      leader={topUserCount > 0 && hs.userCount === topUserCount}
                       onClick={() => setDetailHs(hs)}
                     />
                   ))}
+                  <AddHomeserverTile
+                    nextIndex={nextIndex}
+                    busy={busy}
+                    onClick={() => setCreateHsOpen(true)}
+                  />
                 </div>
               )}
             </div>
+            {createHsOpen && (
+              <CreateHomeserverModal
+                nextIndex={nextIndex}
+                busy={busy}
+                onClose={() => setCreateHsOpen(false)}
+                onAction={runAction}
+              />
+            )}
           </>
         ) : (
-          <div className="content-body">
-            <section className="summary">
-              <Stat label="Homeservers" value={homeservers.length} />
-              <Stat label="Active" value={active} />
-              <Stat label="Dormant" value={homeservers.length - active} />
-              <Stat label="Users" value={totalUsers} />
-            </section>
-            <InfoPanel network={state.network} simulator={state.simulator} />
-            <ActivityPanel totals={state.activity} feed={feed} />
+          <div className="content-body analytics-body">
+            <AnalyticsView state={state} feed={feed} connected={connected} />
           </div>
         )}
       </main>
@@ -182,9 +231,17 @@ export default function App() {
         />
       )}
 
-      {toast && (
-        <div className={`toast ${toast.ok ? "ok" : "err"}`}>{toast.text}</div>
+      {pkarrModal && (
+        <PkarrRecordModal
+          label={pkarrModal.label}
+          seed={pkarrModal.seed}
+          publicKey={pkarrModal.publicKey}
+          pkarrRelay={pkarrModal.pkarrRelay}
+          onClose={() => setPkarrModal(null)}
+        />
       )}
+
+      <ToastNotice toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }
@@ -285,142 +342,140 @@ function StatsIcon() {
   );
 }
 
-function InfoPanel({
-  network,
-  simulator,
-}: {
-  network: NetworkInfo;
-  simulator: SimulatorInfo;
-}) {
-  const range = (r: Range) => `${r[0]}–${r[1]}`;
-  return (
-    <section className="info-panel">
-      <div className="info-group">
-        <h3>Network</h3>
-        <InfoRow label="Bootstrap" value={network.bootstrap} />
-        <InfoRow label="Pkarr relay" value={network.pkarrRelay} link />
-      </div>
-      <div className="info-group">
-        <h3>Simulator</h3>
-        <InfoRow label="Tick interval" value={`${simulator.intervalSecs}s`} />
-        <InfoRow label="Users / tick" value={range(simulator.usersPerTick)} />
-        <InfoRow label="Posts / tick" value={range(simulator.postsPerTick)} />
-        <InfoRow label="Tags / tick" value={range(simulator.tagsPerTick)} />
-        <InfoRow label="Follows / tick" value={range(simulator.followsPerTick)} />
-      </div>
-    </section>
-  );
-}
-
-function InfoRow({
-  label,
-  value,
-  link,
-}: {
-  label: string;
-  value: string;
-  link?: boolean;
-}) {
-  return (
-    <div className="info-row">
-      <span className="info-label">{label}</span>
-      {link ? (
-        <a className="info-value link" href={value} target="_blank" rel="noreferrer">
-          {value}
-        </a>
-      ) : (
-        <span className="info-value">{value}</span>
-      )}
-    </div>
-  );
-}
-
-function ActivityPanel({
-  totals,
-  feed,
-}: {
-  totals: ActivityTotals;
-  feed: TickEvent[];
-}) {
-  return (
-    <section className="activity-panel">
-      <div className="activity-totals">
-        <h3>Activity totals</h3>
-        <div className="totals-grid">
-          <Total label="Ticks" value={totals.ticks} />
-          <Total label="Users" value={totals.users} />
-          <Total label="Posts" value={totals.posts} />
-          <Total label="Tags" value={totals.tags} />
-          <Total label="Follows" value={totals.follows} />
-        </div>
-      </div>
-      <div className="activity-feed">
-        <h3>Live ticks</h3>
-        {feed.length === 0 ? (
-          <p className="muted small">Waiting for the next tick…</p>
-        ) : (
-          <ul className="feed-list">
-            {feed.map((ev) => (
-              <li key={ev.tick} className="feed-row">
-                <span className="feed-tick">tick {ev.tick}</span>
-                <span className="feed-deltas">
-                  <Delta value={ev.users} label="u" />
-                  <Delta value={ev.posts} label="p" />
-                  <Delta value={ev.tags} label="t" />
-                  <Delta value={ev.follows} label="f" />
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function Total({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="total">
-      <span className="total-value">{value}</span>
-      <span className="total-label">{label}</span>
-    </div>
-  );
-}
-
-function Delta({ value, label }: { value: number; label: string }) {
-  return (
-    <span className={`delta ${value > 0 ? "pos" : "zero"}`}>
-      +{value}
-      <span className="delta-label">{label}</span>
-    </span>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="stat">
-      <span className="stat-value">{value}</span>
-      <span className="stat-label">{label}</span>
-    </div>
-  );
-}
-
 function shortKey(key: string): string {
   return key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key;
 }
 
+function ChevronLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-detail-back-icon" aria-hidden="true">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function HomeserverDetailHeader({
+  hs,
+  maxUsers,
+  pkarrRelay,
+  busy,
+  onBack,
+  onCopyKey,
+  onPkarrRecord,
+  onAction,
+}: {
+  hs: Homeserver;
+  maxUsers: number;
+  pkarrRelay: string;
+  busy: boolean;
+  onBack: () => void;
+  onCopyKey: (key: string) => void | Promise<void>;
+  onPkarrRecord: () => void | Promise<void>;
+  onAction: RunAction;
+}) {
+  const { color, keyColor } = hubColorFor(hs.seed);
+  const unlimited = maxUsers === 0;
+  const atCapacity = !unlimited && hs.userCount >= maxUsers;
+  const pkarrUrl = `${pkarrRelay.replace(/\/$/, "")}/${hs.publicKey}`;
+
+  return (
+    <header
+      className="content-head hs-detail-head"
+      style={
+        {
+          "--hs-accent": color,
+          "--hs-key": keyColor,
+        } as CSSProperties
+      }
+    >
+      <button type="button" className="hs-detail-back" onClick={onBack}>
+        <ChevronLeftIcon />
+        <span>Homeservers</span>
+      </button>
+
+      <div className="hs-detail-hero">
+        <span className="hs-detail-avatar" aria-hidden>
+          <svg viewBox={ROOT_VIEWBOX} className="hs-card-avatar-icon">
+            <RootPaths />
+          </svg>
+        </span>
+
+        <div className="hs-detail-body">
+          <div className="hs-detail-title-row">
+            <h1>{hs.label}</h1>
+            <HomeserverStatusMenu hs={hs} busy={busy} onAction={onAction} />
+          </div>
+
+          <button
+            type="button"
+            className="hs-detail-key-row"
+            title="Copy public key"
+            onClick={() => void onCopyKey(hs.publicKey)}
+          >
+            <KeyRowIcon />
+            <span className="hs-detail-key-full">{hs.publicKey}</span>
+          </button>
+
+          <div className="hs-detail-meta">
+            <span className="hs-detail-meta-item">seed {hs.seed}</span>
+            <span className="hs-detail-meta-item">
+              {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
+            </span>
+            <span className={`hs-detail-meta-item ${atCapacity ? "warn" : ""}`}>
+              {unlimited
+                ? "Unlimited capacity"
+                : `${hs.userCount} / ${maxUsers} capacity`}
+            </span>
+            <span className="hs-detail-meta-links">
+              <a
+                className="hs-detail-meta-item hs-detail-open"
+                href={hs.httpUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="Open homeserver URL"
+              >
+                <GlobeLinkIcon />
+                Open
+              </a>
+              <button
+                type="button"
+                className="hs-detail-meta-item hs-detail-pkarr"
+                title={`View pkarr record (${pkarrUrl})`}
+                onClick={() => void onPkarrRecord()}
+              >
+                <PkarrRecordIcon className="hs-link-icon" />
+                Pkarr
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
 function HomeserverCard({
   hs,
+  maxUsers,
+  leader,
   onClick,
 }: {
   hs: Homeserver;
+  maxUsers: number;
+  leader: boolean;
   onClick: () => void;
 }) {
   const { color, keyColor } = hubColorFor(hs.seed);
+  const unlimited = maxUsers === 0;
+  const fillPct = unlimited
+    ? 0
+    : Math.min(100, (hs.userCount / maxUsers) * 100);
+  const nearFull = !unlimited && fillPct >= 80;
+  const active = hs.status === "active";
 
   return (
     <article
-      className={`hs-card ${hs.status}`}
+      className={`hs-card ${hs.status}${leader ? " leader" : ""}`}
       style={
         {
           "--hs-accent": color,
@@ -429,6 +484,8 @@ function HomeserverCard({
       }
       onClick={onClick}
     >
+      {active && <span className="hs-card-wire" aria-hidden />}
+
       <header className="hs-card-head">
         <span className="hs-card-avatar" aria-hidden>
           <svg viewBox={ROOT_VIEWBOX} className="hs-card-avatar-icon">
@@ -438,6 +495,11 @@ function HomeserverCard({
         <div className="hs-card-title">
           <div className="hs-card-title-row">
             <h2>{hs.label}</h2>
+            {leader && (
+              <span className="hs-card-crown" title="Most populated homeserver">
+                <CrownIcon />
+              </span>
+            )}
             <span className={`hs-card-pill ${hs.status}`}>
               <span className={`hs-card-pill-dot ${hs.status}`} aria-hidden />
               {hs.status}
@@ -447,12 +509,57 @@ function HomeserverCard({
         </div>
       </header>
 
-      <div className="hs-card-stats">
-        <span className="hs-stat">
-          <UsersStatIcon />
-          {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
-        </span>
+      <div className="hs-card-meter">
+        <div className="hs-card-meter-head">
+          <span className="hs-card-meter-label">
+            <UsersStatIcon />
+            {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
+          </span>
+          <span className={`hs-card-meter-value ${nearFull ? "warn" : ""}`}>
+            {unlimited ? "Unlimited" : `${Math.round(fillPct)}%`}
+          </span>
+        </div>
+        <div
+          className={`hs-card-meter-track${unlimited ? " unlimited" : ""}${
+            nearFull ? " warn" : ""
+          }`}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuenow={unlimited ? undefined : hs.userCount}
+          aria-valuemax={unlimited ? undefined : maxUsers}
+          aria-label="Capacity"
+        >
+          {unlimited ? (
+            <span className="hs-card-meter-flow" aria-hidden />
+          ) : (
+            <span
+              className="hs-card-meter-fill"
+              style={{ width: `${fillPct}%` }}
+              aria-hidden
+            />
+          )}
+        </div>
+        <div className="hs-card-meter-foot">
+          <span className="hs-card-meter-caption">
+            {unlimited ? "No capacity limit" : `${hs.userCount} / ${maxUsers} slots`}
+          </span>
+          {hs.storageQuotaMb != null && (
+            <span
+              className="hs-card-meter-storage"
+              title="Per-user storage quota"
+            >
+              <DriveIcon />
+              {hs.storageQuotaMb} MB
+            </span>
+          )}
+        </div>
       </div>
+
+      <UserStack
+        users={hs.users}
+        userCount={hs.userCount}
+        homeserverUrl={hs.httpUrl}
+      />
 
       <div className="hs-card-divider" role="separator" />
 
@@ -480,17 +587,6 @@ function HomeserverCard({
           >
             <GlobeLinkIcon />
           </a>
-          <button
-            type="button"
-            className="hs-card-link"
-            title="Copy public key"
-            onClick={(e) => {
-              e.stopPropagation();
-              void navigator.clipboard.writeText(hs.publicKey);
-            }}
-          >
-            <DatabaseLinkIcon />
-          </button>
         </span>
       </div>
     </article>
@@ -507,6 +603,128 @@ function UsersStatIcon() {
   );
 }
 
+function DriveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-stat-icon" aria-hidden="true">
+      <path d="M4 5h16a1 1 0 0 1 1 1v5H3V6a1 1 0 0 1 1-1z" />
+      <path d="M3 11h18v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+      <path d="M7 15h2" />
+    </svg>
+  );
+}
+
+function CrownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-card-crown-icon" aria-hidden="true">
+      <path d="M3 7l4.5 4L12 4l4.5 7L21 7l-1.6 11H4.6L3 7z" />
+    </svg>
+  );
+}
+
+const MAX_AVATARS = 6;
+
+function userHue(key: string): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return hash % 360;
+}
+
+function UserChip({
+  user,
+  homeserverUrl,
+}: {
+  user: Homeserver["users"][number];
+  homeserverUrl: string;
+}) {
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const ctx: UserStorageContext = {
+      pk: user.publicKey,
+      homeserverUrl,
+      userIndex: user.index,
+    };
+    loadProfile(ctx)
+      .then((profile) => {
+        if (!alive || !profile) return;
+        if (profile.name) setName(profile.name);
+        if (!profile.image) return;
+        return loadAvatar(profile.image, ctx).then((url) => {
+          if (alive && url) setAvatar(url);
+        });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [user.publicKey, user.index, homeserverUrl]);
+
+  return (
+    <span
+      className={`hs-user-chip${avatar ? " has-avatar" : ""}`}
+      style={{ "--chip-hue": userHue(user.publicKey) } as CSSProperties}
+      title={name || user.name || user.publicKey}
+    >
+      {avatar ? (
+        <img className="hs-user-chip-img" src={avatar} alt="" loading="lazy" />
+      ) : (
+        <svg
+          viewBox={ROOT_VIEWBOX}
+          className="hs-user-chip-icon"
+          aria-hidden="true"
+        >
+          <RootPaths />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+function UserStack({
+  users,
+  userCount,
+  homeserverUrl,
+}: {
+  users: Homeserver["users"];
+  userCount: number;
+  homeserverUrl: string;
+}) {
+  if (userCount === 0) {
+    return (
+      <div className="hs-card-stack empty">
+        <span className="hs-card-stack-empty-dot" aria-hidden />
+        <span className="hs-card-stack-empty-text">Awaiting first user</span>
+      </div>
+    );
+  }
+
+  const shown = users.slice(0, MAX_AVATARS);
+  const overflow = userCount - shown.length;
+
+  return (
+    <div className="hs-card-stack" aria-label={`${userCount} users`}>
+      <div className="hs-card-avatars">
+        {shown.map((user) => (
+          <UserChip
+            key={user.index}
+            user={user}
+            homeserverUrl={homeserverUrl}
+          />
+        ))}
+        {overflow > 0 && (
+          <span className="hs-user-chip more" title={`${overflow} more`}>
+            +{overflow}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function KeyRowIcon() {
   return (
     <svg viewBox="0 0 24 24" className="hs-row-icon" aria-hidden="true">
@@ -520,16 +738,6 @@ function GlobeLinkIcon() {
     <svg viewBox="0 0 24 24" className="hs-link-icon" aria-hidden="true">
       <circle cx="12" cy="12" r="10" />
       <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  );
-}
-
-function DatabaseLinkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="hs-link-icon" aria-hidden="true">
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-      <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
     </svg>
   );
 }

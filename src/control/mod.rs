@@ -10,6 +10,9 @@ pub enum Action {
     Seed,
     Stop,
     User,
+    Follow,
+    Tag,
+    Batch,
 }
 
 pub struct Cmd {
@@ -17,6 +20,14 @@ pub struct Cmd {
     pub index: Option<u8>,
     pub hs: Option<u8>,
     pub profile: bool,
+    /// User index performing a follow or tag action.
+    pub from: Option<usize>,
+    pub target: Option<String>,
+    pub label: Option<String>,
+    /// Manual batch: number of posts to create (0 = skip).
+    pub batch_posts: u32,
+    /// Manual batch: number of tags to create (0 = skip).
+    pub batch_tags: u32,
     pub reply: oneshot::Sender<Reply>,
 }
 

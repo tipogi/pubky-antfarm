@@ -40,6 +40,12 @@ export const api = {
   stopHomeserver: (index: number) => postJson("/api/homeserver/stop", { index }),
   addUser: (hs: number, profile: boolean) =>
     postJson("/api/user", { hs, profile }),
+  follow: (from: number, target: string) =>
+    postJson("/api/follow", { from, target }),
+  tag: (from: number, target: string, label: string) =>
+    postJson("/api/tag", { from, target, label }),
+  batch: (req: { from: number; posts: number; tags: number }) =>
+    postJson("/api/batch", req),
   fetchUsersStorage: (seed: number) =>
     getJson<UserStorageStats[]>(`/api/homeserver/${seed}/users/storage`),
 };

@@ -75,6 +75,13 @@ impl UserKeys {
         self.keys.get(&index).cloned()
     }
 
+    pub fn index_for_z32(&self, z32: &str) -> Option<usize> {
+        self.keys
+            .iter()
+            .find(|(_, pk)| pk.z32() == z32)
+            .map(|(&index, _)| index)
+    }
+
     /// Iterate over all registered (index, public key) pairs.
     pub fn all(&self) -> impl Iterator<Item = (usize, &PublicKey)> {
         self.keys.iter().map(|(&index, pk)| (index, pk))

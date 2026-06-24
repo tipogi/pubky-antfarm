@@ -233,6 +233,30 @@ impl Runtime {
                 )
                 .await
             }
+            control::Action::Follow => match (cmd.from, cmd.target) {
+                (Some(from), Some(target)) => {
+                    self.handle_follow(from, target, registry.as_deref_mut())
+                        .await
+                }
+                (None, _) => Err(anyhow::anyhow!("follow requires from user index")),
+                (_, None) => Err(anyhow::anyhow!("follow requires target pubky")),
+            },
+            control::Action::Tag => match (cmd.from, cmd.target, cmd.label) {
+                (Some(from), Some(target), Some(label)) => {
+                    self.handle_tag(from, target, label, registry.as_deref_mut())
+                        .await
+                }
+                (None, _, _) => Err(anyhow::anyhow!("tag requires from user index")),
+                (_, None, _) => Err(anyhow::anyhow!("tag requires target key")),
+                (_, _, None) => Err(anyhow::anyhow!("tag requires label")),
+            },
+            control::Action::Batch => match cmd.from {
+                Some(from) => {
+                    self.handle_batch(from, cmd.batch_posts, cmd.batch_tags, registry.as_deref_mut())
+                        .await
+                }
+                None => Err(anyhow::anyhow!("batch requires user index")),
+            },
         };
         self.publish_state(registry.as_deref());
         let reply = reply.unwrap_or_else(|e| control::Reply::Err(format!("{e}")));
@@ -373,6 +397,15 @@ impl Runtime {
             }
         };
 
+        if let Some(reg) = registry.as_ref() {
+            let max_users = self.config.simulator.max_users_per_homeserver;
+            if reg.at_user_capacity(&label, max_users) {
+                anyhow::bail!(
+                    "{label} is at its user limit ({max_users}) — create events instead"
+                );
+            }
+        }
+
         let (user_pk, storage) = social::signup(&self.sdk, keypair, &hs_pk).await?;
 
         if profile {
@@ -390,6 +423,101 @@ impl Runtime {
             public_key: Some(user_pk.z32()),
             http_url: None,
             message: format!("user {user_index} created ({action})"),
+        })
+    }
+
+    async fn handle_follow(
+        &self,
+        from: usize,
+        target: String,
+        mut registry: Option<&mut simulator::Registry>,
+    ) -> anyhow::Result<control::Reply> {
+        let followee_z32 = social::normalize_follow_target(&target)?;
+        let keypair = social::UserKeys::keypair_at(from);
+
+        social::create_follow(&self.sdk, keypair, &followee_z32).await?;
+
+        if let Some(reg) = registry.as_deref_mut() {
+            if let Some(to) = reg.user_keys.index_for_z32(&followee_z32) {
+                reg.follows.push((from, to));
+            }
+        }
+
+        Ok(control::Reply::Ok {
+            label: format!("user {from}"),
+            public_key: None,
+            http_url: None,
+            message: format!("user {from} now follows {followee_z32}"),
+        })
+    }
+
+    async fn handle_tag(
+        &self,
+        from: usize,
+        target: String,
+        label: String,
+        _registry: Option<&mut simulator::Registry>,
+    ) -> anyhow::Result<control::Reply> {
+        let tag_label = label.trim();
+        if tag_label.is_empty() {
+            anyhow::bail!("tag label cannot be empty");
+        }
+
+        let target_uri = social::normalize_tag_target(&target)?;
+        let keypair = social::UserKeys::keypair_at(from);
+
+        social::create_tag(&self.sdk, keypair, &target_uri, tag_label).await?;
+
+        Ok(control::Reply::Ok {
+            label: format!("user {from}"),
+            public_key: None,
+            http_url: None,
+            message: format!("user {from} tagged {target_uri} as \"{tag_label}\""),
+        })
+    }
+
+    async fn handle_batch(
+        &mut self,
+        from: usize,
+        posts: u32,
+        tags: u32,
+        registry: Option<&mut simulator::Registry>,
+    ) -> anyhow::Result<control::Reply> {
+        const MAX_BATCH: u32 = 100;
+
+        if posts == 0 && tags == 0 {
+            anyhow::bail!("batch requires at least one event type with count > 0");
+        }
+        if posts > MAX_BATCH || tags > MAX_BATCH {
+            anyhow::bail!("batch count cannot exceed {MAX_BATCH} per event type");
+        }
+
+        let Some(reg) = registry else {
+            anyhow::bail!("batch requires the simulator (not available in listen-only mode)");
+        };
+
+        let summary = simulator::batch(&self.sdk, reg, from, posts, tags).await;
+
+        if summary.posts == 0 && summary.tags == 0 {
+            anyhow::bail!("batch created no events — try again or add posts for tag targets");
+        }
+
+        self.totals.posts += summary.posts as u64;
+        self.totals.tags += summary.tags as u64;
+
+        let mut parts = Vec::new();
+        if summary.posts > 0 {
+            parts.push(format!("{} posts", summary.posts));
+        }
+        if summary.tags > 0 {
+            parts.push(format!("{} tags", summary.tags));
+        }
+
+        Ok(control::Reply::Ok {
+            label: format!("user {from}"),
+            public_key: None,
+            http_url: None,
+            message: format!("user {from} created {}", parts.join(", ")),
         })
     }
 
