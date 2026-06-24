@@ -145,6 +145,7 @@ cp config.default.toml config.toml
 | `[postgres] url` | `postgres://…localhost:5432/postgres` | Postgres connection string |
 | `[[homeservers]]` | hs2 (seed 1), hs3 (seed 2) | Swarm homeservers beyond the built-in hs1 |
 | `[simulator] interval_secs` | `20` | Seconds between simulator ticks |
+| `[simulator] max_users_per_homeserver` | `0` | Cap users per homeserver (`0` = unlimited). When full, user slots become extra posts/tags/follows |
 | `[simulator] users_per_tick` | `[0, 5]` | Min/max new users per tick |
 | `[simulator] posts_per_tick` | `[0, 10]` | Min/max new posts per tick |
 | `[simulator] tags_per_tick` | `[0, 10]` | Min/max new tags per tick |
@@ -294,7 +295,7 @@ After the initial setup (one user + profile + post + tag per homeserver), the si
 - **Tags**: 0-10 new tags per tick, targeting random users or posts
 - **Follows**: 0-5 new follows per tick between random users (self-follows are skipped)
 
-All ranges and the tick interval are configurable in `[simulator]` in `config.toml`.
+All ranges and the tick interval are configurable in `[simulator]` in `config.toml`. When `max_users_per_homeserver` is set and a homeserver reaches that cap, the simulator stops signing up new users there and redirects those tick slots as extra posts, tags, or follows.
 
 ### Avatars
 

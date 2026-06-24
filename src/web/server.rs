@@ -32,6 +32,9 @@ struct AppState {
 /// - `GET  /api/activity` — SSE stream of per-tick simulator deltas
 /// - `POST /api/homeserver/{create,seed,stop}` — control a homeserver
 /// - `POST /api/user` — create a user on a homeserver
+/// - `POST /api/follow` — user follows a target pubky
+/// - `POST /api/tag` — user tags a target URI with a label
+/// - `POST /api/batch` — create many posts and/or tags at once
 pub async fn serve(
     addr: String,
     state: watch::Receiver<DashboardState>,
@@ -52,6 +55,9 @@ pub async fn serve(
         .route("/api/homeserver/stop", post(stop_homeserver))
         .route("/api/homeserver/:seed/users/storage", get(user_storage))
         .route("/api/user", post(create_user))
+        .route("/api/follow", post(create_follow))
+        .route("/api/tag", post(create_tag))
+        .route("/api/batch", post(create_batch))
         .fallback_service(spa)
         .layer(CorsLayer::permissive())
         .with_state(AppState {
@@ -140,25 +146,86 @@ struct UserReq {
     index: Option<u8>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FollowReq {
+    from: usize,
+    target: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TagReq {
+    from: usize,
+    target: String,
+    label: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchReq {
+    from: usize,
+    #[serde(default)]
+    posts: u32,
+    #[serde(default)]
+    tags: u32,
+}
+
 async fn create_homeserver(
     State(app): State<AppState>,
     Json(req): Json<IndexReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(&app.ctrl_tx, control::Action::Create, Some(req.index), None, false).await)
+    Json(send_cmd(
+        &app.ctrl_tx,
+        control::Action::Create,
+        None,
+        Some(req.index),
+        false,
+        None,
+        None,
+        None,
+        0,
+        0,
+    )
+    .await)
 }
 
 async fn seed_homeserver(
     State(app): State<AppState>,
     Json(req): Json<IndexReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(&app.ctrl_tx, control::Action::Seed, Some(req.index), None, false).await)
+    Json(send_cmd(
+        &app.ctrl_tx,
+        control::Action::Seed,
+        None,
+        Some(req.index),
+        false,
+        None,
+        None,
+        None,
+        0,
+        0,
+    )
+    .await)
 }
 
 async fn stop_homeserver(
     State(app): State<AppState>,
     Json(req): Json<IndexReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(&app.ctrl_tx, control::Action::Stop, Some(req.index), None, false).await)
+    Json(send_cmd(
+        &app.ctrl_tx,
+        control::Action::Stop,
+        None,
+        Some(req.index),
+        false,
+        None,
+        None,
+        None,
+        0,
+        0,
+    )
+    .await)
 }
 
 async fn user_storage(
@@ -189,9 +256,77 @@ async fn create_user(
         send_cmd(
             &app.ctrl_tx,
             control::Action::User,
-            req.index,
             Some(req.hs),
+            req.index,
             req.profile,
+            None,
+            None,
+            None,
+            0,
+            0,
+        )
+        .await,
+    )
+}
+
+async fn create_follow(
+    State(app): State<AppState>,
+    Json(req): Json<FollowReq>,
+) -> Json<control::Response> {
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Follow,
+            None,
+            None,
+            false,
+            Some(req.from),
+            Some(req.target),
+            None,
+            0,
+            0,
+        )
+        .await,
+    )
+}
+
+async fn create_tag(
+    State(app): State<AppState>,
+    Json(req): Json<TagReq>,
+) -> Json<control::Response> {
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Tag,
+            None,
+            None,
+            false,
+            Some(req.from),
+            Some(req.target),
+            Some(req.label),
+            0,
+            0,
+        )
+        .await,
+    )
+}
+
+async fn create_batch(
+    State(app): State<AppState>,
+    Json(req): Json<BatchReq>,
+) -> Json<control::Response> {
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Batch,
+            None,
+            None,
+            false,
+            Some(req.from),
+            None,
+            None,
+            req.posts,
+            req.tags,
         )
         .await,
     )
@@ -201,9 +336,14 @@ async fn create_user(
 async fn send_cmd(
     tx: &mpsc::Sender<control::Cmd>,
     action: control::Action,
-    index: Option<u8>,
     hs: Option<u8>,
+    index: Option<u8>,
     profile: bool,
+    from: Option<usize>,
+    target: Option<String>,
+    label: Option<String>,
+    batch_posts: u32,
+    batch_tags: u32,
 ) -> control::Response {
     let (reply_tx, reply_rx) = oneshot::channel();
     let cmd = control::Cmd {
@@ -211,6 +351,11 @@ async fn send_cmd(
         index,
         hs,
         profile,
+        from,
+        target,
+        label,
+        batch_posts,
+        batch_tags,
         reply: reply_tx,
     };
 

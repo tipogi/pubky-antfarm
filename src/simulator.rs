@@ -36,6 +36,17 @@ impl Registry {
         self.assignments.insert(index, homeserver);
     }
 
+    pub fn user_count_on(&self, label: &str) -> usize {
+        self.assignments
+            .values()
+            .filter(|assigned| assigned.as_str() == label)
+            .count()
+    }
+
+    pub fn at_user_capacity(&self, label: &str, max_users: u32) -> bool {
+        max_users > 0 && self.user_count_on(label) >= max_users as usize
+    }
+
     fn random_post(&self) -> Option<&(PublicKey, String)> {
         if self.posts.is_empty() {
             return None;
@@ -62,9 +73,10 @@ pub async fn tick(
 ) -> TickSummary {
     let mut rng = rand::rng();
     let num_users = rng.random_range(sim.users_per_tick[0]..=sim.users_per_tick[1]);
-    let num_posts = rng.random_range(sim.posts_per_tick[0]..=sim.posts_per_tick[1]);
-    let num_tags = rng.random_range(sim.tags_per_tick[0]..=sim.tags_per_tick[1]);
-    let num_follows = rng.random_range(sim.follows_per_tick[0]..=sim.follows_per_tick[1]);
+    let mut num_posts = rng.random_range(sim.posts_per_tick[0]..=sim.posts_per_tick[1]);
+    let mut num_tags = rng.random_range(sim.tags_per_tick[0]..=sim.tags_per_tick[1]);
+    let mut num_follows = rng.random_range(sim.follows_per_tick[0]..=sim.follows_per_tick[1]);
+    let max_users = sim.max_users_per_homeserver;
 
     let mut created_users = 0u32;
     let mut created_posts = 0u32;
@@ -72,8 +84,10 @@ pub async fn tick(
     let mut created_follows = 0u32;
 
     for _ in 0..num_users {
-        let hs_idx = rng.random_range(0..homeservers.len());
-        let hs = &homeservers[hs_idx];
+        let Some(hs) = pick_homeserver(homeservers, registry, max_users, &mut rng) else {
+            redirect_user_slot_to_events(&mut num_posts, &mut num_tags, &mut num_follows, &mut rng);
+            continue;
+        };
         let hs_label = hs.label.clone();
         let hs_pk = &hs.public_key;
         let (index, keypair) = registry.user_keys.create_next();
@@ -91,51 +105,11 @@ pub async fn tick(
     }
 
     for _ in 0..num_posts {
-        let Some((index, _)) = registry.user_keys.random_user() else {
-            continue;
-        };
-        let keypair = social::UserKeys::keypair_at(index);
-        let content = social::random_content();
-
-        match social::create_post(sdk, keypair, &content).await {
-            Ok((author_pk, post_id)) => {
-                registry.posts.push((author_pk, post_id));
-                created_posts += 1;
-            }
-            Err(e) => {
-                println!("    {} create post: {e}", "error".red());
-            }
-        }
+        created_posts += create_one_post(sdk, registry).await;
     }
 
     for _ in 0..num_tags {
-        let Some((index, _)) = registry.user_keys.random_user() else {
-            continue;
-        };
-        let keypair = social::UserKeys::keypair_at(index);
-        let tag_label = social::random_tag_label();
-
-        let tag_user: bool = rng.random();
-        let target_uri = if tag_user {
-            if let Some((_, target_pk)) = registry.user_keys.random_user() {
-                format!("pubky://{}/pub/pubky.app/profile.json", target_pk.z32())
-            } else {
-                continue;
-            }
-        } else if let Some((author_pk, post_id)) = registry.random_post() {
-            format!("pubky://{}/pub/pubky.app/posts/{}", author_pk.z32(), post_id)
-        } else {
-            continue;
-        };
-
-        match social::create_tag(sdk, keypair, &target_uri, tag_label).await {
-            Ok(()) => {
-                created_tags += 1;
-            }
-            Err(e) => {
-                println!("    {} create tag: {e}", "error".red());
-            }
-        }
+        created_tags += create_one_tag(sdk, registry, &mut rng).await;
     }
 
     for _ in 0..num_follows {
@@ -179,5 +153,136 @@ pub async fn tick(
         posts: created_posts,
         tags: created_tags,
         follows: created_follows,
+    }
+}
+
+/// Create posts and/or tags as a specific user (manual batch).
+pub async fn batch(
+    sdk: &Pubky,
+    registry: &mut Registry,
+    from: usize,
+    num_posts: u32,
+    num_tags: u32,
+) -> TickSummary {
+    let mut rng = rand::rng();
+    let mut created_posts = 0u32;
+    let mut created_tags = 0u32;
+
+    for _ in 0..num_posts {
+        created_posts += create_one_post_as(sdk, registry, from).await;
+    }
+
+    for _ in 0..num_tags {
+        created_tags += create_one_tag_as(sdk, registry, from, &mut rng).await;
+    }
+
+    if created_posts > 0 || created_tags > 0 {
+        println!(
+            "  {} user {from}  {} {}  {} {}",
+            "[batch]".dimmed(),
+            format!("+{created_posts}").yellow(),
+            "posts".dimmed(),
+            format!("+{created_tags}").yellow(),
+            "tags".dimmed(),
+        );
+    }
+
+    TickSummary {
+        users: 0,
+        posts: created_posts,
+        tags: created_tags,
+        follows: 0,
+    }
+}
+
+async fn create_one_post(sdk: &Pubky, registry: &mut Registry) -> u32 {
+    let Some((index, _)) = registry.user_keys.random_user() else {
+        return 0;
+    };
+    create_one_post_as(sdk, registry, index).await
+}
+
+async fn create_one_post_as(sdk: &Pubky, registry: &mut Registry, from: usize) -> u32 {
+    let keypair = social::UserKeys::keypair_at(from);
+    let content = social::random_content();
+
+    match social::create_post(sdk, keypair, &content).await {
+        Ok((author_pk, post_id)) => {
+            registry.posts.push((author_pk, post_id));
+            1
+        }
+        Err(e) => {
+            println!("    {} create post: {e}", "error".red());
+            0
+        }
+    }
+}
+
+async fn create_one_tag<R: rand::RngExt>(sdk: &Pubky, registry: &mut Registry, rng: &mut R) -> u32 {
+    let Some((index, _)) = registry.user_keys.random_user() else {
+        return 0;
+    };
+    create_one_tag_as(sdk, registry, index, rng).await
+}
+
+async fn create_one_tag_as<R: rand::RngExt>(
+    sdk: &Pubky,
+    registry: &mut Registry,
+    from: usize,
+    rng: &mut R,
+) -> u32 {
+
+    let tag_label = social::random_tag_label();
+    let keypair = social::UserKeys::keypair_at(from);
+
+    let tag_user: bool = rng.random();
+    let target_uri = if tag_user {
+        if let Some((_, target_pk)) = registry.user_keys.random_user() {
+            format!("pubky://{}/pub/pubky.app/profile.json", target_pk.z32())
+        } else {
+            return 0;
+        }
+    } else if let Some((author_pk, post_id)) = registry.random_post() {
+        format!("pubky://{}/pub/pubky.app/posts/{}", author_pk.z32(), post_id)
+    } else {
+        return 0;
+    };
+
+    match social::create_tag(sdk, keypair, &target_uri, tag_label).await {
+        Ok(()) => 1,
+        Err(e) => {
+            println!("    {} create tag: {e}", "error".red());
+            0
+        }
+    }
+}
+
+fn pick_homeserver<'a, R: rand::RngExt>(
+    homeservers: &'a [Homeserver],
+    registry: &Registry,
+    max_users: u32,
+    rng: &mut R,
+) -> Option<&'a Homeserver> {
+    let eligible: Vec<&Homeserver> = homeservers
+        .iter()
+        .filter(|hs| !registry.at_user_capacity(&hs.label, max_users))
+        .collect();
+    if eligible.is_empty() {
+        return None;
+    }
+    let idx = rng.random_range(0..eligible.len());
+    Some(eligible[idx])
+}
+
+fn redirect_user_slot_to_events<R: rand::RngExt>(
+    num_posts: &mut u32,
+    num_tags: &mut u32,
+    num_follows: &mut u32,
+    rng: &mut R,
+) {
+    match rng.random_range(0..3) {
+        0 => *num_posts += 1,
+        1 => *num_tags += 1,
+        _ => *num_follows += 1,
     }
 }

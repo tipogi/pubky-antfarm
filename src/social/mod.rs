@@ -24,6 +24,38 @@ pub(crate) use tag::create as create_tag;
 pub(crate) use tag::create_for_app as create_tag_for_app;
 pub(crate) use tag::random_label as random_tag_label;
 
+/// Extract the public-key segment from a `pubky://<pk>/…` URI.
+fn pubky_uri_key(uri: &str) -> Option<&str> {
+    uri.strip_prefix("pubky://")?.split('/').next()
+}
+
+/// Normalize a follow target to a z32 public key.
+pub(crate) fn normalize_follow_target(target: &str) -> anyhow::Result<String> {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("target pubky is required");
+    }
+    if let Some(pk) = pubky_uri_key(trimmed) {
+        return Ok(pk.to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+/// Normalize a tag target to a profile URI from a bare z32 public key.
+pub(crate) fn normalize_tag_target(target: &str) -> anyhow::Result<String> {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("target key is required");
+    }
+    if trimmed.contains("://") || trimmed.contains('/') {
+        anyhow::bail!("target must be a pubky key, not a URI");
+    }
+    Ok(format!(
+        "pubky://{}/pub/pubky.app/profile.json",
+        trimmed
+    ))
+}
+
 // TODO: Might be deleted
 pub async fn read_events(sdk: &Pubky, label: &str, user_pk: &PublicKey, hs_pk: &PublicKey) {
     let tag = format!("[{label}]").magenta().bold();

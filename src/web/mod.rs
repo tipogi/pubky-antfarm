@@ -91,6 +91,7 @@ impl Default for NetworkInfo {
 #[serde(rename_all = "camelCase")]
 pub struct SimulatorInfo {
     pub interval_secs: u64,
+    pub max_users_per_homeserver: u32,
     pub users_per_tick: [u32; 2],
     pub posts_per_tick: [u32; 2],
     pub tags_per_tick: [u32; 2],
@@ -101,6 +102,7 @@ impl From<&SimulatorConfig> for SimulatorInfo {
     fn from(s: &SimulatorConfig) -> Self {
         Self {
             interval_secs: s.interval_secs,
+            max_users_per_homeserver: s.max_users_per_homeserver,
             users_per_tick: s.users_per_tick,
             posts_per_tick: s.posts_per_tick,
             tags_per_tick: s.tags_per_tick,

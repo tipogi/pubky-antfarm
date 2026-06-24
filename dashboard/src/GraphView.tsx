@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type WheelEvent as ReactWheelEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -76,12 +77,22 @@ function build(homeservers: Homeserver[]): Built {
   const hubs: Node[] = [];
   const byUserIndex = new Map<number, Node>();
 
-  const cols = Math.max(1, Math.ceil(Math.sqrt(homeservers.length)));
+  // Organic placement: a golden-angle (phyllotaxis) spiral instead of a rigid
+  // grid. Hub 0 sits at the center and the rest fan out naturally around it.
+  // Spacing is derived from the largest cluster so rings never collide.
+  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+  const maxRing = homeservers.reduce(
+    (m, hs) => Math.max(m, ringRadius(hs.users.length)),
+    HUB_R
+  );
+  const spacing = Math.max(HUB_SPACING, maxRing * 2 + 140);
+  const spiralC = spacing * 0.6;
+
   homeservers.forEach((hs, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const hx = col * HUB_SPACING;
-    const hy = row * HUB_SPACING;
+    const angle = i * GOLDEN_ANGLE;
+    const radius = i === 0 ? 0 : Math.max(spacing, spiralC * Math.sqrt(i));
+    const hx = radius * Math.cos(angle);
+    const hy = radius * Math.sin(angle);
     const { color, keyColor } = hubColorFor(hs.seed);
 
     const hub: Node = {
@@ -743,7 +754,11 @@ function HoverCard({
   const fullKey =
     node.kind === "user" ? node.user?.publicKey : node.hs.publicKey;
   return (
-    <div className="gv-card" style={{ left, top }} role="tooltip">
+    <div
+      className="gv-card"
+      style={{ left, top, "--gv-accent": node.color } as CSSProperties}
+      role="tooltip"
+    >
       <div className="gv-card-head">
         {node.kind === "user" && avatar ? (
           <img className="gv-card-avatar" src={avatar} alt="" />
@@ -752,13 +767,30 @@ function HoverCard({
             className="gv-card-avatar fallback"
             style={{ background: node.color }}
           >
-            {node.kind === "user" ? "👤" : node.hs.label.slice(0, 2)}
+            {node.kind === "user" ? (
+              <svg viewBox={ROOT_VIEWBOX} className="gv-card-avatar-mark">
+                <RootPaths />
+              </svg>
+            ) : (
+              node.hs.label.slice(0, 2)
+            )}
           </span>
         )}
         <div className="gv-card-title">
           <strong>{title}</strong>
           <span className="gv-card-sub">
-            {node.kind === "user" ? `@ ${node.hs.label}` : "homeserver"}
+            {node.kind === "user" ? (
+              `@ ${node.hs.label}`
+            ) : (
+              <span
+                className={`gv-card-status ${
+                  node.hs.status === "active" ? "active" : ""
+                }`}
+              >
+                <span className="gv-card-status-dot" />
+                {node.hs.status}
+              </span>
+            )}
           </span>
         </div>
       </div>

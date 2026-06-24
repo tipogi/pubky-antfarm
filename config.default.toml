@@ -18,6 +18,7 @@ seed = 2    # expands to [2; 32]
 
 [simulator]
 interval_secs = 20
+# max_users_per_homeserver = 100   # cap users per homeserver (0 = unlimited); overflow becomes extra events
 users_per_tick = [0, 5]
 posts_per_tick = [0, 10]
 tags_per_tick = [0, 10]
