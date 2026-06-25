@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use colored::Colorize;
@@ -16,6 +16,9 @@ pub struct Runtime {
     dormant: HashMap<u8, Homeserver>,
     config: AntfarmConfig,
     sdk: Pubky,
+    /// One signed-in session per user index, reused across writes so each user
+    /// signs in at most once.
+    sessions: social::SessionCache,
     state_tx: watch::Sender<DashboardState>,
     activity_tx: broadcast::Sender<TickEvent>,
     totals: ActivityTotals,
@@ -81,6 +84,7 @@ impl Runtime {
             dormant,
             config,
             sdk,
+            sessions: social::SessionCache::default(),
             state_tx,
             activity_tx,
             totals,
@@ -129,8 +133,14 @@ impl Runtime {
 
             for hs in &self.homeservers {
                 let (index, keypair) = user_keys.create_next();
-                let (user_pk, post_id) =
-                    social::signup_and_write(&self.sdk, index, &hs.public_key, keypair).await?;
+                let (user_pk, post_id) = social::signup_and_write(
+                    &self.sdk,
+                    index,
+                    &hs.public_key,
+                    keypair,
+                    &self.sessions,
+                )
+                .await?;
                 initial_posts.push((user_pk.clone(), post_id));
                 initial_assignments.push((index, hs.label.clone()));
                 initial_events.push((hs.label.clone(), user_pk, hs.public_key.clone()));
@@ -149,7 +159,17 @@ impl Runtime {
             self.publish_state(Some(&registry));
             let secs = self.config.simulator.interval_secs;
             let mut interval = tokio::time::interval(Duration::from_secs(secs));
+            // We deliberately stop polling the timer while draining a tick's
+            // ops, so skip (don't burst-fire) any ticks missed in the meantime.
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut tick_num: u64 = 0;
+
+            // A tick is expanded into a queue of individual ops; we execute one
+            // per loop iteration so queued control commands (a dashboard click)
+            // are serviced after at most one in-flight op instead of waiting for
+            // the whole tick.
+            let mut pending: VecDeque<simulator::SimOp> = VecDeque::new();
+            let mut tick_acc = simulator::TickSummary::default();
 
             println!(
                 "\n{} (every {}s)",
@@ -159,40 +179,9 @@ impl Runtime {
 
             loop {
                 tokio::select! {
-                    _ = interval.tick() => {
-                        tick_num += 1;
-                        // Race the tick against Ctrl-C so shutdown can cancel an
-                        // in-flight tick instead of waiting for it to finish.
-                        tokio::select! {
-                            summary = simulator::tick(
-                                &self.sdk,
-                                &self.homeservers,
-                                &mut registry,
-                                &self.config.simulator,
-                                tick_num,
-                            ) => {
-                                self.totals.ticks += 1;
-                                self.totals.users += summary.users as u64;
-                                self.totals.posts += summary.posts as u64;
-                                self.totals.tags += summary.tags as u64;
-                                self.totals.follows += summary.follows as u64;
+                    biased;
 
-                                let _ = self.activity_tx.send(TickEvent {
-                                    tick: tick_num,
-                                    users: summary.users,
-                                    posts: summary.posts,
-                                    tags: summary.tags,
-                                    follows: summary.follows,
-                                });
-
-                                self.publish_state(Some(&registry));
-                            }
-                            _ = tokio::signal::ctrl_c() => {
-                                println!("\n{} {}", "✓".green().bold(), "Shutting down...".green());
-                                break;
-                            }
-                        }
-                    }
+                    // Control commands win over draining the next op.
                     Some(cmd) = ctrl_rx.recv() => {
                         self.handle_cmd(cmd, Some(&mut registry)).await;
                     }
@@ -200,11 +189,75 @@ impl Runtime {
                         println!("\n{} {}", "✓".green().bold(), "Shutting down...".green());
                         break;
                     }
+
+                    // Plan a new tick only when idle, so ticks throttle under
+                    // load and per-tick accounting stays clean.
+                    _ = interval.tick(), if pending.is_empty() => {
+                        tick_num += 1;
+                        pending = simulator::plan_tick(&self.config.simulator);
+                        tick_acc = simulator::TickSummary::default();
+                        if pending.is_empty() {
+                            self.finalize_tick(tick_num, tick_acc);
+                        }
+                    }
+
+                    // Drain exactly one op. The arm is always ready while work
+                    // remains; pop inside the body (never in the arm pattern, or
+                    // select would consume an op even when this arm isn't taken).
+                    _ = std::future::ready(()), if !pending.is_empty() => {
+                        let op = pending.pop_front().unwrap();
+                        let res = simulator::run_op(
+                            &self.sdk,
+                            &self.homeservers,
+                            &mut registry,
+                            &self.sessions,
+                            &self.config.simulator,
+                            op,
+                        )
+                        .await;
+                        tick_acc.add(res);
+                        // Publish per op so new users/edges appear live.
+                        self.publish_state(Some(&registry));
+                        if pending.is_empty() {
+                            self.finalize_tick(tick_num, tick_acc);
+                        }
+                    }
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// Roll a completed tick's totals into the running counters, emit the
+    /// activity event, and print the per-tick summary line.
+    fn finalize_tick(&mut self, tick_num: u64, summary: simulator::TickSummary) {
+        self.totals.ticks += 1;
+        self.totals.users += summary.users as u64;
+        self.totals.posts += summary.posts as u64;
+        self.totals.tags += summary.tags as u64;
+        self.totals.follows += summary.follows as u64;
+
+        let _ = self.activity_tx.send(TickEvent {
+            tick: tick_num,
+            users: summary.users,
+            posts: summary.posts,
+            tags: summary.tags,
+            follows: summary.follows,
+        });
+
+        println!(
+            "  {} {} {}  {} {}  {} {}  {} {}",
+            format!("[tick {tick_num}]").dimmed(),
+            format!("+{}", summary.users).yellow(),
+            "users".dimmed(),
+            format!("+{}", summary.posts).yellow(),
+            "posts".dimmed(),
+            format!("+{}", summary.tags).yellow(),
+            "tags".dimmed(),
+            format!("+{}", summary.follows).yellow(),
+            "follows".dimmed(),
+        );
     }
 
     async fn handle_cmd(
@@ -469,6 +522,13 @@ impl Runtime {
         }
 
         let (user_pk, storage) = social::signup(&self.sdk, keypair, &hs_pk).await?;
+        self.sessions.insert(
+            user_index,
+            social::UserSession {
+                public_key: user_pk.clone(),
+                storage: storage.clone(),
+            },
+        );
 
         if profile {
             social::write_profile(&storage, user_index, &user_pk).await?;
@@ -495,9 +555,12 @@ impl Runtime {
         mut registry: Option<&mut simulator::Registry>,
     ) -> anyhow::Result<control::Reply> {
         let followee_z32 = social::normalize_follow_target(&target)?;
-        let keypair = social::UserKeys::keypair_at(from);
+        let session = self.sessions.get(&self.sdk, from).await?;
 
-        social::create_follow(&self.sdk, keypair, &followee_z32).await?;
+        if let Err(e) = social::create_follow(&session, &followee_z32).await {
+            self.sessions.invalidate(from);
+            return Err(e);
+        }
 
         if let Some(reg) = registry.as_deref_mut() {
             if let Some(to) = reg.user_keys.index_for_z32(&followee_z32) {
@@ -526,9 +589,12 @@ impl Runtime {
         }
 
         let target_uri = social::normalize_tag_target(&target)?;
-        let keypair = social::UserKeys::keypair_at(from);
+        let session = self.sessions.get(&self.sdk, from).await?;
 
-        social::create_tag(&self.sdk, keypair, &target_uri, tag_label).await?;
+        if let Err(e) = social::create_tag(&session, &target_uri, tag_label).await {
+            self.sessions.invalidate(from);
+            return Err(e);
+        }
 
         Ok(control::Reply::Ok {
             label: format!("user {from}"),
@@ -558,7 +624,7 @@ impl Runtime {
             anyhow::bail!("batch requires the simulator (not available in listen-only mode)");
         };
 
-        let summary = simulator::batch(&self.sdk, reg, from, posts, tags).await;
+        let summary = simulator::batch(&self.sdk, &self.sessions, reg, from, posts, tags).await;
 
         if summary.posts == 0 && summary.tags == 0 {
             anyhow::bail!("batch created no events — try again or add posts for tag targets");

@@ -48,7 +48,9 @@ async fn seed_follow(sdk: &Pubky, from: usize, to: usize) -> anyhow::Result<()> 
     let from_pk = from_kp.public_key();
     let to_pk = to_kp.public_key();
 
-    social::create_follow(sdk, from_kp, &to_pk.z32())
+    let sessions = social::SessionCache::default();
+    let session = sessions.get(sdk, from).await?;
+    social::create_follow(&session, &to_pk.z32())
         .await
         .context(format!("failed to create follow from user {from} to user {to} — is antfarm running?"))?;
 
@@ -73,7 +75,9 @@ async fn seed_tag(sdk: &Pubky, from: usize, to: usize, label: &str) -> anyhow::R
     let to_pk = to_kp.public_key();
     let target_uri = format!("pubky://{}/pub/pubky.app/profile.json", to_pk.z32());
 
-    social::create_tag(sdk, from_kp, &target_uri, label)
+    let sessions = social::SessionCache::default();
+    let session = sessions.get(sdk, from).await?;
+    social::create_tag(&session, &target_uri, label)
         .await
         .context(format!("failed to create tag from user {from} to user {to} — is antfarm running?"))?;
 
@@ -90,7 +94,9 @@ async fn seed_tag_resource(sdk: &Pubky, from: usize, target: &str, label: &str, 
     let (_, from_kp) = keypair_from_index(from);
     let from_pk = from_kp.public_key();
 
-    social::create_tag_for_app(sdk, from_kp, target, label, app)
+    let sessions = social::SessionCache::default();
+    let session = sessions.get(sdk, from).await?;
+    social::create_tag_for_app(&session, target, label, app)
         .await
         .context(format!("failed to create tag-resource from user {from} — is antfarm running?"))?;
 
@@ -115,7 +121,9 @@ async fn seed_mention(sdk: &Pubky, from: usize, to_indices: &[usize]) -> anyhow:
         mentioned.push(kp.public_key());
     }
 
-    let (author_pk, post_id) = social::create_mention(sdk, from_kp, from, &mentioned)
+    let sessions = social::SessionCache::default();
+    let session = sessions.get(sdk, from).await?;
+    let (author_pk, post_id) = social::create_mention(&session, from, &mentioned)
         .await
         .context(format!("failed to create mention from user {from} — is antfarm running?"))?;
 

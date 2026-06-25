@@ -100,17 +100,15 @@ export function CreateHomeserverModal({
     e.preventDefault();
     if (busy || !seedValid) return;
 
+    // Close immediately; the result arrives as a toast notification.
+    onClose();
     onAction(async () => {
       const created = await api.createHomeserver(seedNum, island);
       if (!created.ok || start === "dormant") {
-        if (created.ok) onClose();
         return created;
       }
-
-      const seeded = await api.seedHomeserver(seedNum);
-      if (seeded.ok) onClose();
-      return seeded;
-    });
+      return api.seedHomeserver(seedNum);
+    }, `Creating hs${seedNum + 1}…`);
   };
 
   return (

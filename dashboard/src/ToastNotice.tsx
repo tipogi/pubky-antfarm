@@ -9,6 +9,9 @@ import {
 export interface ToastData {
   ok: boolean;
   text: string;
+  /** When true the toast represents in-flight work: it stays until replaced
+   * (no auto-dismiss) and renders a neutral spinner instead of ok/err. */
+  pending?: boolean;
 }
 
 const DISMISS_MS = 4200;
@@ -51,44 +54,70 @@ export function ToastNotice({
     setShown(toast);
     setLeaving(false);
 
-    timers.current.push(
-      window.setTimeout(exit, DISMISS_MS - EXIT_MS)
-    );
+    // Pending toasts persist until a result toast replaces them.
+    if (!toast.pending) {
+      timers.current.push(
+        window.setTimeout(exit, DISMISS_MS - EXIT_MS)
+      );
+    }
 
     return clearTimers;
   }, [toast, clearTimers, exit]);
 
   if (!shown) return null;
 
+  const variant = shown.pending ? "pending" : shown.ok ? "ok" : "err";
+  const label =
+    variant === "pending" ? "Working" : variant === "ok" ? "Success" : "Error";
+
   return (
     <div className="notice-stack" role="status" aria-live="polite">
       <article
-        className={`notice ${shown.ok ? "ok" : "err"}${leaving ? " leaving" : ""}`}
+        className={`notice ${variant}${leaving ? " leaving" : ""}`}
         style={{ "--notice-duration": `${DISMISS_MS}ms` } as CSSProperties}
       >
         <span className="notice-icon" aria-hidden>
-          {shown.ok ? <NoticeCheckIcon /> : <NoticeAlertIcon />}
+          {variant === "pending" ? (
+            <NoticeSpinner />
+          ) : variant === "ok" ? (
+            <NoticeCheckIcon />
+          ) : (
+            <NoticeAlertIcon />
+          )}
         </span>
 
         <div className="notice-body">
-          <span className="notice-label">{shown.ok ? "Success" : "Error"}</span>
+          <span className="notice-label">{label}</span>
           <p className="notice-text">{shown.text}</p>
         </div>
 
-        <button
-          type="button"
-          className="notice-close"
-          aria-label="Dismiss notification"
-          onClick={exit}
-        >
-          ×
-        </button>
+        {!shown.pending && (
+          <button
+            type="button"
+            className="notice-close"
+            aria-label="Dismiss notification"
+            onClick={exit}
+          >
+            ×
+          </button>
+        )}
 
-        <div className="notice-progress" aria-hidden>
-          <span className="notice-progress-bar" />
-        </div>
+        {!shown.pending && (
+          <div className="notice-progress" aria-hidden>
+            <span className="notice-progress-bar" />
+          </div>
+        )}
       </article>
     </div>
+  );
+}
+
+function NoticeSpinner() {
+  return (
+    <svg viewBox="0 0 24 24" className="notice-icon-svg notice-spinner" aria-hidden>
+      <circle cx="12" cy="12" r="9" className="notice-spinner-track" />
+      <path d="M21 12a9 9 0 0 0-9-9" className="notice-spinner-head" />
+    </svg>
   );
 }
 

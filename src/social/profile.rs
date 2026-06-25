@@ -3,7 +3,7 @@ use pubky_app_specs::{traits::HasPath, PubkyAppUser, PubkyAppUserLink};
 use pubky_testnet::pubky::{Keypair, Pubky, PublicKey, SessionStorage};
 
 use super::common::{self, Writable};
-use super::{file, identity, post, tag};
+use super::{file, identity, post, tag, SessionCache, UserSession};
 
 /// Signs up a user on the given homeserver, returns (public_key, storage).
 pub(crate) async fn signup(
@@ -76,8 +76,16 @@ pub(crate) async fn signup_and_write(
     index: usize,
     hs_pk: &PublicKey,
     keypair: Keypair,
+    cache: &SessionCache,
 ) -> anyhow::Result<(PublicKey, String)> {
     let (user_pk, storage) = signup(sdk, keypair, hs_pk).await?;
+    cache.insert(
+        index,
+        UserSession {
+            public_key: user_pk.clone(),
+            storage: storage.clone(),
+        },
+    );
 
     let name = identity::user_name(index);
     let label = format!("[{name}]").magenta().bold().to_string();

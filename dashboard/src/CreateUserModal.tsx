@@ -32,11 +32,12 @@ export function CreateUserModal({
     e.preventDefault();
     if (busy || atCapacity) return;
 
-    onAction(async () => {
-      const res = await api.addUser(hs.seed, withProfile);
-      if (res.ok) onClose();
-      return res;
-    });
+    // Close immediately; the result arrives as a toast notification.
+    onClose();
+    onAction(
+      () => api.addUser(hs.seed, withProfile),
+      `Creating user on ${hs.label}…`
+    );
   };
 
   return (

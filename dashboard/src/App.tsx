@@ -26,7 +26,10 @@ import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
 import { loadProfile, loadAvatar, type UserStorageContext } from "./pubky";
 
-export type RunAction = (fn: () => Promise<ControlResponse>) => void;
+export type RunAction = (
+  fn: () => Promise<ControlResponse>,
+  pendingText?: string
+) => void;
 
 type View = "graph" | "homeservers" | "stats";
 
@@ -71,8 +74,11 @@ export default function App() {
 
   const showToast = (next: ToastData) => setToast(next);
 
-  const runAction: RunAction = async (fn) => {
+  const runAction: RunAction = async (fn, pendingText) => {
     setBusy(true);
+    // Give instant feedback while the (network/DHT-bound) action runs in the
+    // background — the caller has usually already closed its modal.
+    if (pendingText) showToast({ ok: true, text: pendingText, pending: true });
     const res = await fn();
     setBusy(false);
     showToast({
@@ -348,6 +354,11 @@ function shortKey(key: string): string {
   return key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key;
 }
 
+/** Strip the protocol and trailing slash so only host:port shows. */
+function shortUrl(url: string): string {
+  return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
 function ChevronLeftIcon() {
   return (
     <svg viewBox="0 0 24 24" className="hs-detail-back-icon" aria-hidden="true">
@@ -422,26 +433,23 @@ function HomeserverDetailHeader({
             </button>
 
             <div className="hs-detail-meta">
+              <a
+                className="hs-detail-meta-item hs-detail-url"
+                href={hs.httpUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open ${hs.httpUrl}`}
+              >
+                <GlobeLinkIcon />
+                {shortUrl(hs.httpUrl)}
+              </a>
               <span className="hs-detail-meta-item">seed {hs.seed}</span>
-              <span className="hs-detail-meta-item">
-                {hs.userCount} {hs.userCount === 1 ? "user" : "users"}
-              </span>
               <span className={`hs-detail-meta-item ${atCapacity ? "warn" : ""}`}>
                 {unlimited
-                  ? "Unlimited capacity"
-                  : `${hs.userCount} / ${maxUsers} capacity`}
+                  ? `${hs.userCount} ${hs.userCount === 1 ? "user" : "users"} · unlimited`
+                  : `${hs.userCount} / ${maxUsers} users`}
               </span>
               <span className="hs-detail-meta-links">
-                <a
-                  className="hs-detail-meta-item hs-detail-open"
-                  href={hs.httpUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Open homeserver URL"
-                >
-                  <GlobeLinkIcon />
-                  Open
-                </a>
                 <button
                   type="button"
                   className="hs-detail-meta-item hs-detail-pkarr"

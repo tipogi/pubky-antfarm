@@ -1695,8 +1695,33 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   --notice-accent: #ff6b6b;
 }
 
+.notice.pending {
+  --notice-accent: var(--muted);
+}
+
 .notice.leaving {
   animation: notice-out 0.28s ease forwards;
+}
+
+.notice-spinner {
+  animation: notice-spin 0.7s linear infinite;
+}
+
+.notice-spinner-track {
+  fill: none;
+  stroke: currentColor;
+  opacity: 0.25;
+}
+
+.notice-spinner-head {
+  fill: none;
+  stroke: currentColor;
+}
+
+@keyframes notice-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .notice-icon {
@@ -2916,18 +2941,24 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   color: var(--text);
 }
 
-.hs-detail-open {
+.hs-detail-url {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 0;
   border: none;
   background: none;
-  color: var(--muted);
-  font: inherit;
+  color: var(--hs-accent, var(--muted));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
   cursor: pointer;
   text-decoration: none;
   transition: color 0.15s ease;
+}
+
+.hs-detail-url:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 .hs-detail-pkarr {
@@ -2965,7 +2996,7 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   margin-left: auto;
 }
 
-.hs-detail-open .hs-link-icon,
+.hs-detail-url .hs-link-icon,
 .hs-detail-pkarr .hs-link-icon,
 .hs-detail-add-key .hs-link-icon {
   width: 13px;
@@ -2978,7 +3009,6 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   stroke-linejoin: round;
 }
 
-.hs-detail-open:hover,
 .hs-detail-pkarr:hover,
 .hs-detail-add-key:hover:not(:disabled) {
   color: var(--text);

@@ -3,9 +3,10 @@ use pubky_app_specs::{
     traits::{HasIdPath, TimestampId},
     PubkyAppPost, PubkyAppPostKind,
 };
-use pubky_testnet::pubky::{Keypair, PublicKey, Pubky};
+use pubky_testnet::pubky::PublicKey;
 
 use super::common::{self, Writable};
+use super::UserSession;
 
 fn build(author_index: usize, mentioned: &[PublicKey]) -> anyhow::Result<(Writable, String)> {
     let mentions_text: Vec<String> = mentioned
@@ -27,21 +28,16 @@ fn build(author_index: usize, mentioned: &[PublicKey]) -> anyhow::Result<(Writab
 }
 
 pub(crate) async fn create(
-    sdk: &Pubky,
-    keypair: Keypair,
+    session: &UserSession,
     author_index: usize,
     mentioned: &[PublicKey],
 ) -> anyhow::Result<(PublicKey, String)> {
-    let signer = sdk.signer(keypair);
-    let user_pk = signer.public_key();
+    let user_pk = session.public_key.clone();
     let z32 = user_pk.z32();
     let label = "[seed]".yellow().bold().to_string();
 
-    let session = signer.signin().await?;
-    let storage = session.storage();
-
     let (writable, post_id) = build(author_index, mentioned)?;
-    common::put(&storage, &writable, &label, &z32).await?;
+    common::put(&session.storage, &writable, &label, &z32).await?;
 
     Ok((user_pk, post_id))
 }

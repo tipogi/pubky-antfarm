@@ -1,8 +1,8 @@
 use colored::Colorize;
 use pubky_app_specs::{traits::HasIdPath, PubkyAppFollow};
-use pubky_testnet::pubky::{Keypair, Pubky};
 
 use super::common::{self, Writable};
+use super::UserSession;
 
 fn build(followee_z32: &str) -> anyhow::Result<Writable> {
     let follow = PubkyAppFollow::new();
@@ -11,20 +11,11 @@ fn build(followee_z32: &str) -> anyhow::Result<Writable> {
     Ok(Writable { path, json })
 }
 
-pub(crate) async fn create(
-    sdk: &Pubky,
-    keypair: Keypair,
-    followee_z32: &str,
-) -> anyhow::Result<()> {
-    let signer = sdk.signer(keypair);
-    let user_pk = signer.public_key();
-    let z32 = user_pk.z32();
+pub(crate) async fn create(session: &UserSession, followee_z32: &str) -> anyhow::Result<()> {
+    let z32 = session.public_key.z32();
     let label = "[sim]".dimmed().to_string();
 
-    let session = signer.signin().await?;
-    let storage = session.storage();
-
-    common::put(&storage, &build(followee_z32)?, &label, &z32).await?;
+    common::put(&session.storage, &build(followee_z32)?, &label, &z32).await?;
 
     Ok(())
 }

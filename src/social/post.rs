@@ -3,10 +3,11 @@ use pubky_app_specs::{
     traits::{HasIdPath, TimestampId},
     PubkyAppPost, PubkyAppPostKind,
 };
-use pubky_testnet::pubky::{Keypair, Pubky, PublicKey};
+use pubky_testnet::pubky::PublicKey;
 use rand::RngExt as _;
 
 use super::common::{self, Writable};
+use super::UserSession;
 
 const WORDS: &[&str] = &[
     "hello", "world", "pubky", "rust", "async", "token", "node", "swarm", "hash", "key",
@@ -45,20 +46,15 @@ fn build_with_content(content: &str) -> anyhow::Result<(Writable, String)> {
 }
 
 pub(crate) async fn create(
-    sdk: &Pubky,
-    keypair: Keypair,
+    session: &UserSession,
     content: &str,
 ) -> anyhow::Result<(PublicKey, String)> {
-    let signer = sdk.signer(keypair);
-    let user_pk = signer.public_key();
+    let user_pk = session.public_key.clone();
     let z32 = user_pk.z32();
     let label = "[sim]".dimmed().to_string();
 
-    let session = signer.signin().await?;
-    let storage = session.storage();
-
     let (writable, post_id) = build_with_content(content)?;
-    common::put(&storage, &writable, &label, &z32).await?;
+    common::put(&session.storage, &writable, &label, &z32).await?;
 
     Ok((user_pk, post_id))
 }

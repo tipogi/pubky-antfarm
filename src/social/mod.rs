@@ -5,6 +5,7 @@ mod identity;
 mod mention;
 mod post;
 mod profile;
+mod session;
 mod tag;
 
 use colored::Colorize;
@@ -13,6 +14,7 @@ use pubky_testnet::pubky::{Pubky, PublicKey};
 
 pub use identity::UserKeys;
 pub(crate) use identity::user_name;
+pub(crate) use session::{SessionCache, UserSession};
 pub(crate) use follow::create as create_follow;
 pub(crate) use mention::create as create_mention;
 pub(crate) use post::create as create_post;

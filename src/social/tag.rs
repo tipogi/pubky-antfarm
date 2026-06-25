@@ -3,10 +3,10 @@ use pubky_app_specs::{
     traits::{HasIdPath, HashId},
     PubkyAppTag,
 };
-use pubky_testnet::pubky::{Keypair, Pubky};
 use rand::RngExt as _;
 
 use super::common::{self, Writable};
+use super::UserSession;
 
 const TAG_LABELS: &[&str] = &[
     "cool", "interesting", "important", "funny", "relevant",
@@ -39,40 +39,40 @@ fn build_for_app(uri: &str, label: &str, app: &str) -> anyhow::Result<Writable> 
 }
 
 pub(crate) async fn create(
-    sdk: &Pubky,
-    keypair: Keypair,
+    session: &UserSession,
     target_uri: &str,
     tag_label: &str,
 ) -> anyhow::Result<()> {
-    let signer = sdk.signer(keypair);
-    let user_pk = signer.public_key();
-    let z32 = user_pk.z32();
+    let z32 = session.public_key.z32();
     let label = "[sim]".dimmed().to_string();
 
-    let session = signer.signin().await?;
-    let storage = session.storage();
-
-    common::put(&storage, &build_for_uri(target_uri, tag_label)?, &label, &z32).await?;
+    common::put(
+        &session.storage,
+        &build_for_uri(target_uri, tag_label)?,
+        &label,
+        &z32,
+    )
+    .await?;
 
     Ok(())
 }
 
 pub(crate) async fn create_for_app(
-    sdk: &Pubky,
-    keypair: Keypair,
+    session: &UserSession,
     target_uri: &str,
     tag_label: &str,
     app: &str,
 ) -> anyhow::Result<()> {
-    let signer = sdk.signer(keypair);
-    let user_pk = signer.public_key();
-    let z32 = user_pk.z32();
+    let z32 = session.public_key.z32();
     let label = "[sim]".dimmed().to_string();
 
-    let session = signer.signin().await?;
-    let storage = session.storage();
-
-    common::put(&storage, &build_for_app(target_uri, tag_label, app)?, &label, &z32).await?;
+    common::put(
+        &session.storage,
+        &build_for_app(target_uri, tag_label, app)?,
+        &label,
+        &z32,
+    )
+    .await?;
 
     Ok(())
 }
