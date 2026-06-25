@@ -8,6 +8,7 @@ import {
 import { api, type UserStorageStats } from "./api";
 import type { RunAction } from "./App";
 import { BatchEventsModal } from "./BatchEventsModal";
+import { SocialPostModal } from "./SocialPostModal";
 import { PkarrRecordModal } from "./PkarrRecordModal";
 import { PkarrRecordIcon } from "./PkarrRecordIcon";
 import { EventActionIcon, UserEventsModal } from "./UserEventsModal";
@@ -146,7 +147,7 @@ interface RowState {
   avatar?: string | null;
 }
 
-type ActionKind = "follow" | "tag" | "batch";
+type ActionKind = "follow" | "tag" | "batch" | "social";
 
 type FollowTagModal = {
   kind: "follow" | "tag";
@@ -158,6 +159,7 @@ interface ActionModalState {
   kind: ActionKind;
   userIndex: number;
   displayName: string;
+  publicKey?: string;
 }
 
 function FollowActionIcon() {
@@ -190,6 +192,15 @@ function SpamActionIcon() {
   );
 }
 
+function PostActionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-user-action-icon" aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <path d="M8 9h8M8 13h5" />
+    </svg>
+  );
+}
+
 function PkarrActionIcon() {
   return <PkarrRecordIcon className="hs-user-action-icon" />;
 }
@@ -198,6 +209,7 @@ function UserActionButtons({
   disabled,
   onFollow,
   onTag,
+  onPost,
   onBatch,
   onEvents,
   onPkarr,
@@ -206,6 +218,7 @@ function UserActionButtons({
   disabled: boolean;
   onFollow: () => void;
   onTag: () => void;
+  onPost: () => void;
   onBatch: () => void;
   onEvents: () => void;
   onPkarr: () => void;
@@ -236,6 +249,18 @@ function UserActionButtons({
           <TagActionIcon />
         </span>
         <span className="hs-user-action-label">Tag</span>
+      </button>
+      <button
+        type="button"
+        className="hs-user-action-trigger"
+        disabled={disabled}
+        onClick={onPost}
+        title="Create mention or repost"
+      >
+        <span className="hs-user-action-glyph">
+          <PostActionIcon />
+        </span>
+        <span className="hs-user-action-label">Post</span>
       </button>
       <button
         type="button"
@@ -517,8 +542,13 @@ export function HomeserverUsersView({
     };
   }, [hs.httpUrl, usersKey]);
 
-  const openModal = (kind: ActionKind, userIndex: number, displayName: string) => {
-    setActionModal({ kind, userIndex, displayName });
+  const openModal = (
+    kind: ActionKind,
+    userIndex: number,
+    displayName: string,
+    publicKey?: string
+  ) => {
+    setActionModal({ kind, userIndex, displayName, publicKey });
   };
 
   const openPkarrModal = (
@@ -666,6 +696,9 @@ export function HomeserverUsersView({
                           disabled={busy}
                           onFollow={() => openModal("follow", user.index, displayName)}
                           onTag={() => openModal("tag", user.index, displayName)}
+                          onPost={() =>
+                            openModal("social", user.index, displayName, user.publicKey)
+                          }
                           onBatch={() => openModal("batch", user.index, displayName)}
                           onEvents={() =>
                             openEventsModal(user.index, displayName, user.publicKey)
@@ -692,6 +725,16 @@ export function HomeserverUsersView({
           key={`batch-${actionModal.userIndex}`}
           userIndex={actionModal.userIndex}
           displayName={actionModal.displayName}
+          busy={busy}
+          onClose={() => setActionModal(null)}
+          onAction={onAction}
+        />
+      ) : actionModal?.kind === "social" && actionModal.publicKey ? (
+        <SocialPostModal
+          key={`social-${actionModal.userIndex}`}
+          userIndex={actionModal.userIndex}
+          displayName={actionModal.displayName}
+          publicKey={actionModal.publicKey}
           busy={busy}
           onClose={() => setActionModal(null)}
           onAction={onAction}

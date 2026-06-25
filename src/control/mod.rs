@@ -13,8 +13,18 @@ pub enum Action {
     Follow,
     Tag,
     Batch,
+    /// Create a mention, repost, or combined short post.
+    SocialPost,
     /// Toggle/set a homeserver's island (isolation) mode.
     Island,
+}
+
+#[derive(Debug, Clone)]
+pub struct SocialPostPayload {
+    pub kind: String,
+    pub from: String,
+    pub mention_key: Option<String>,
+    pub post_uri: Option<String>,
 }
 
 pub struct Cmd {
@@ -33,6 +43,7 @@ pub struct Cmd {
     /// Island mode. For `Create`, the initial state (default `false`). For
     /// `Island`, the desired state — `None` toggles the current value.
     pub island: Option<bool>,
+    pub social_post: Option<SocialPostPayload>,
     pub reply: oneshot::Sender<Reply>,
 }
 

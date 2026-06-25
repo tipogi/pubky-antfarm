@@ -78,6 +78,12 @@ export const api = {
     postJson("/api/tag", { from, target, label }),
   batch: (req: { from: number; posts: number; tags: number }) =>
     postJson("/api/batch", req),
+  socialPost: (req: {
+    from: string;
+    kind: string;
+    mentionKey?: string;
+    postUri?: string;
+  }) => postJson("/api/post/social", req),
   fetchUsersStorage: (seed: number) =>
     getJson<UserStorageStats[]>(`/api/homeserver/${seed}/users/storage`),
   fetchUserKeys: (index: number) =>

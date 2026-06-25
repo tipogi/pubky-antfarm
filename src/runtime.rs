@@ -115,8 +115,14 @@ impl Runtime {
             web::PKARR_RELAY_URL.underline()
         );
 
+        // Without a request timeout the underlying reqwest client waits forever
+        // on a stalled response. A single hung request would pin a tick op (and
+        // its concurrency permit) indefinitely, wedging `tick_running` so the
+        // simulator silently stops scheduling ticks. Bounding the request lets a
+        // stall surface as an error that the op handles and recovers from.
         let client = PubkyHttpClient::builder()
             .testnet_with_host("127.0.0.1")
+            .request_timeout(Duration::from_secs(30))
             .build()?;
         let sdk = Pubky::with_client(client);
 
@@ -245,7 +251,8 @@ impl Runtime {
             control::Action::User
             | control::Action::Follow
             | control::Action::Tag
-            | control::Action::Batch => {
+            | control::Action::Batch
+            | control::Action::SocialPost => {
                 self.spawn_data_cmd(cmd, simulate);
             }
         }
@@ -348,6 +355,20 @@ impl Runtime {
                         .await
                     }
                     None => Err(anyhow::anyhow!("batch requires user index")),
+                },
+                control::Action::SocialPost => match cmd.social_post {
+                    Some(payload) => {
+                        run_social_post_cmd(
+                            &sdk,
+                            &sessions,
+                            &registry,
+                            &totals,
+                            &limiter,
+                            payload,
+                        )
+                        .await
+                    }
+                    None => Err(anyhow::anyhow!("social post payload required")),
                 },
                 _ => unreachable!("spawn_data_cmd only handles data-plane commands"),
             };
@@ -790,6 +811,81 @@ async fn run_tag_cmd(
         public_key: None,
         http_url: None,
         message: format!("user {from} tagged {target_uri} as \"{tag_label}\""),
+    })
+}
+
+async fn run_social_post_cmd(
+    sdk: &Pubky,
+    sessions: &social::SessionCache,
+    registry: &RegistryHandle,
+    totals: &Arc<Totals>,
+    limiter: &Arc<Semaphore>,
+    payload: control::SocialPostPayload,
+) -> anyhow::Result<control::Reply> {
+    let _permit = limiter.acquire().await.expect("limiter never closed");
+
+    let variant = social::SocialPostVariant::parse(&payload.kind)?;
+
+    match variant {
+        social::SocialPostVariant::Mention if payload.mention_key.is_none() => {
+            anyhow::bail!("mention requires mentionKey");
+        }
+        social::SocialPostVariant::Repost if payload.post_uri.is_none() => {
+            anyhow::bail!("repost requires postUri");
+        }
+        social::SocialPostVariant::RepostMention
+            if payload.mention_key.is_none() || payload.post_uri.is_none() =>
+        {
+            anyhow::bail!("repost_mention requires mentionKey and postUri");
+        }
+        _ => {}
+    }
+
+    let author_z32 = social::normalize_follow_target(&payload.from)?;
+    let author_index = {
+        let reg = registry.read().await;
+        reg.user_keys
+            .index_for_z32(&author_z32)
+            .ok_or_else(|| anyhow::anyhow!("unknown author key: {author_z32}"))?
+    };
+
+    let session = sessions.get(sdk, author_index).await?;
+
+    let mention_key = payload.mention_key.as_deref();
+    let post_uri = payload.post_uri.as_deref();
+
+    let (author_pk, post_id) = match social::create_social_post(
+        &session,
+        variant,
+        mention_key,
+        post_uri,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            sessions.invalidate(author_index);
+            return Err(e);
+        }
+    };
+
+    {
+        let mut reg = registry.write().await;
+        reg.posts.push((author_pk.clone(), post_id.clone()));
+    }
+    totals.add_posts(1);
+
+    let post_uri = format!(
+        "pubky://{}/pub/pubky.app/posts/{}",
+        author_pk.z32(),
+        post_id
+    );
+
+    Ok(control::Reply::Ok {
+        label: post_uri.clone(),
+        public_key: Some(author_pk.z32()),
+        http_url: None,
+        message: format!("post created: {post_uri}"),
     })
 }
 

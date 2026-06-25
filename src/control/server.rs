@@ -79,6 +79,7 @@ pub async fn listen(addr: String, tx: mpsc::Sender<Cmd>) {
                 batch_posts: 0,
                 batch_tags: 0,
                 island: req.island,
+                social_post: None,
                 reply: reply_tx,
             };
 

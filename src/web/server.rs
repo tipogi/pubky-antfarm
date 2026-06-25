@@ -36,6 +36,7 @@ struct AppState {
 /// - `POST /api/follow` — user follows a target pubky
 /// - `POST /api/tag` — user tags a target URI with a label
 /// - `POST /api/batch` — create many posts and/or tags at once
+/// - `POST /api/post/social` — create a mention, repost, or repost+mention short post
 pub async fn serve(
     addr: String,
     state: watch::Receiver<DashboardState>,
@@ -61,6 +62,7 @@ pub async fn serve(
         .route("/api/follow", post(create_follow))
         .route("/api/tag", post(create_tag))
         .route("/api/batch", post(create_batch))
+        .route("/api/post/social", post(create_social_post))
         .fallback_service(spa)
         .layer(CorsLayer::permissive())
         .with_state(AppState {
@@ -189,6 +191,17 @@ struct BatchReq {
     tags: u32,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SocialPostReq {
+    from: String,
+    kind: String,
+    #[serde(default)]
+    mention_key: Option<String>,
+    #[serde(default)]
+    post_uri: Option<String>,
+}
+
 async fn create_homeserver(
     State(app): State<AppState>,
     Json(req): Json<CreateReq>,
@@ -205,6 +218,7 @@ async fn create_homeserver(
         0,
         0,
         Some(req.island),
+        None,
     )
     .await)
 }
@@ -225,6 +239,7 @@ async fn set_island(
         0,
         0,
         Some(req.island),
+        None,
     )
     .await)
 }
@@ -245,6 +260,7 @@ async fn seed_homeserver(
         0,
         0,
         None,
+        None,
     )
     .await)
 }
@@ -264,6 +280,7 @@ async fn stop_homeserver(
         None,
         0,
         0,
+        None,
         None,
     )
     .await)
@@ -326,6 +343,7 @@ async fn create_user(
             0,
             0,
             None,
+            None,
         )
         .await,
     )
@@ -347,6 +365,7 @@ async fn create_follow(
             None,
             0,
             0,
+            None,
             None,
         )
         .await,
@@ -370,6 +389,7 @@ async fn create_tag(
             0,
             0,
             None,
+            None,
         )
         .await,
     )
@@ -392,6 +412,25 @@ async fn create_batch(
             req.posts,
             req.tags,
             None,
+            None,
+        )
+        .await,
+    )
+}
+
+async fn create_social_post(
+    State(app): State<AppState>,
+    Json(req): Json<SocialPostReq>,
+) -> Json<control::Response> {
+    Json(
+        send_social_post_cmd(
+            &app.ctrl_tx,
+            control::SocialPostPayload {
+                kind: req.kind,
+                from: req.from,
+                mention_key: req.mention_key,
+                post_uri: req.post_uri,
+            },
         )
         .await,
     )
@@ -411,6 +450,7 @@ async fn send_cmd(
     batch_posts: u32,
     batch_tags: u32,
     island: Option<bool>,
+    social_post: Option<control::SocialPostPayload>,
 ) -> control::Response {
     let (reply_tx, reply_rx) = oneshot::channel();
     let cmd = control::Cmd {
@@ -424,6 +464,7 @@ async fn send_cmd(
         batch_posts,
         batch_tags,
         island,
+        social_post,
         reply: reply_tx,
     };
 
@@ -435,4 +476,25 @@ async fn send_cmd(
         Ok(reply) => control::Response::from(reply),
         Err(_) => control::Response::from(control::Reply::Err("command handler dropped".into())),
     }
+}
+
+async fn send_social_post_cmd(
+    tx: &mpsc::Sender<control::Cmd>,
+    payload: control::SocialPostPayload,
+) -> control::Response {
+    send_cmd(
+        tx,
+        control::Action::SocialPost,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+        0,
+        0,
+        None,
+        Some(payload),
+    )
+    .await
 }
