@@ -76,14 +76,14 @@ export function UserDetailsModal({
   label,
   seed,
   userIndex,
-  publicKey,
   kindLabel = "User details",
   onClose,
 }: {
   label: string;
   seed: number;
   userIndex: number;
-  publicKey: string;
+  /** Accepted for call-site symmetry; details are fetched by index. */
+  publicKey?: string;
   kindLabel?: string;
   onClose: () => void;
 }) {

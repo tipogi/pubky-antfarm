@@ -23,7 +23,17 @@ export interface UserKeys {
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    // Surface the backend's error payload (when present) instead of a bare status.
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) detail = body.error;
+    } catch {
+      // Non-JSON error body — keep the status-based message.
+    }
+    throw new Error(detail);
+  }
   return (await res.json()) as T;
 }
 
@@ -34,7 +44,20 @@ async function postJson(url: string, body: unknown): Promise<ControlResponse> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    return (await res.json()) as ControlResponse;
+
+    // Parse the JSON body if there is one; failures surface as a structured error
+    // (matching getJson) rather than being silently swallowed.
+    let data: ControlResponse | null = null;
+    try {
+      data = (await res.json()) as ControlResponse;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: data?.error ?? `HTTP ${res.status}` };
+    }
+    return data ?? { ok: false, error: "empty response from antfarm" };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "request failed" };
   }

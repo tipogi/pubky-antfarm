@@ -47,6 +47,25 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:6400",
         changeOrigin: true,
+        // Never time out: /api/events is a long-lived SSE stream.
+        timeout: 0,
+        proxyTimeout: 0,
+        configure: (proxy) => {
+          // A backend hiccup should surface as a clean 502 JSON (matching the
+          // control API shape) instead of an opaque 500, so the dashboard's
+          // error handling stays consistent and SSE reconnects cleanly.
+          proxy.on("error", (err, _req, res) => {
+            const code = (err as { code?: string }).code ?? err.message;
+            // `res` is a Socket for SSE/websocket upgrades — only HTTP responses
+            // expose writeHead/headersSent.
+            if (res && "writeHead" in res && !res.headersSent) {
+              res.writeHead(502, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({ ok: false, error: `backend unreachable: ${code}` })
+              );
+            }
+          });
+        },
       },
     },
   },

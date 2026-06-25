@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { api } from "./api";
-import type { RunAction } from "./App";
 import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
 
@@ -73,12 +71,12 @@ export function CreateHomeserverModal({
   nextIndex,
   busy,
   onClose,
-  onAction,
+  onCreate,
 }: {
   nextIndex: number;
   busy: boolean;
   onClose: () => void;
-  onAction: RunAction;
+  onCreate: (index: number, island: boolean, activate: boolean) => void;
 }) {
   const [seed, setSeed] = useState(String(nextIndex));
   const [start, setStart] = useState<HomeserverStart>("dormant");
@@ -100,15 +98,10 @@ export function CreateHomeserverModal({
     e.preventDefault();
     if (busy || !seedValid) return;
 
-    // Close immediately; the result arrives as a toast notification.
+    // Close immediately; an optimistic node appears and the result arrives as a
+    // toast notification.
     onClose();
-    onAction(async () => {
-      const created = await api.createHomeserver(seedNum, island);
-      if (!created.ok || start === "dormant") {
-        return created;
-      }
-      return api.seedHomeserver(seedNum);
-    }, `Creating hs${seedNum + 1}…`);
+    onCreate(seedNum, island, start === "active");
   };
 
   return (

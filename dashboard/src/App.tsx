@@ -49,7 +49,16 @@ export default function App() {
     pkarrRelay: string;
   } | null>(null);
 
-  const homeservers = state?.homeservers ?? [];
+  // Placeholders shown optimistically while a create request is in flight.
+  const [pendingHomeservers, setPendingHomeservers] = useState<Homeserver[]>([]);
+
+  const realHomeservers = state?.homeservers ?? [];
+  const realSeeds = new Set(realHomeservers.map((hs) => hs.seed));
+  // Real nodes win; keep a placeholder only until its real node arrives via SSE.
+  const homeservers = [
+    ...realHomeservers,
+    ...pendingHomeservers.filter((p) => !realSeeds.has(p.seed)),
+  ];
   const active = homeservers.filter((hs) => hs.status === "active").length;
   const totalUsers = homeservers.reduce((sum, hs) => sum + hs.userCount, 0);
   const topUserCount = homeservers.reduce(
@@ -67,6 +76,13 @@ export default function App() {
     }
   }, [view]);
 
+  // Drop optimistic placeholders once the real homeserver lands over SSE.
+  useEffect(() => {
+    if (!state) return;
+    const seeds = new Set(state.homeservers.map((hs) => hs.seed));
+    setPendingHomeservers((prev) => prev.filter((p) => !seeds.has(p.seed)));
+  }, [state]);
+
   const resolveHs = (hs: Homeserver) =>
     homeservers.find((h) => h.label === hs.label) ?? hs;
 
@@ -75,6 +91,12 @@ export default function App() {
   const showToast = (next: ToastData) => setToast(next);
 
   const runAction: RunAction = async (fn, pendingText) => {
+    // Don't fire writes while the SSE stream is down (backend booting or a
+    // mid-session drop) — they'd hit a backend that isn't ready yet.
+    if (!connected) {
+      showToast({ ok: false, text: "Reconnecting to antfarm…" });
+      return;
+    }
     setBusy(true);
     // Give instant feedback while the (network/DHT-bound) action runs in the
     // background — the caller has usually already closed its modal.
@@ -85,6 +107,47 @@ export default function App() {
       ok: res.ok,
       text: res.ok ? res.message ?? "Done" : res.error ?? "Failed",
     });
+  };
+
+  // Create a homeserver with an optimistic placeholder node: the node appears
+  // immediately, reconciles when the SSE snapshot arrives, and is rolled back if
+  // the create fails.
+  const createHomeserver = (index: number, island = false, activate = false) => {
+    if (!connected) {
+      showToast({ ok: false, text: "Reconnecting to antfarm…" });
+      return;
+    }
+
+    setPendingHomeservers((prev) =>
+      prev.some((p) => p.seed === index)
+        ? prev
+        : [
+            ...prev,
+            {
+              label: `hs${index + 1}`,
+              seed: index,
+              publicKey: "",
+              httpUrl: "",
+              status: activate ? "active" : "dormant",
+              userCount: 0,
+              users: [],
+              island,
+              pending: true,
+            },
+          ]
+    );
+
+    runAction(async () => {
+      const created = await api.createHomeserver(index, island);
+      if (!created.ok) {
+        setPendingHomeservers((prev) => prev.filter((p) => p.seed !== index));
+        return created;
+      }
+      if (activate) {
+        return api.seedHomeserver(index);
+      }
+      return created;
+    }, `Creating hs${index + 1}…`);
   };
 
   const copyKey = async (key: string) => {
@@ -146,9 +209,7 @@ export default function App() {
                 onSelect={setDrawerHs}
                 nextIndex={nextIndex}
                 busy={busy}
-                onCreateHomeserver={(index) =>
-                  runAction(() => api.createHomeserver(index))
-                }
+                onCreateHomeserver={(index) => createHomeserver(index)}
               />
             ) : (
               <p className="muted">No homeservers running.</p>
@@ -219,7 +280,7 @@ export default function App() {
                 nextIndex={nextIndex}
                 busy={busy}
                 onClose={() => setCreateHsOpen(false)}
-                onAction={runAction}
+                onCreate={createHomeserver}
               />
             )}
           </>
@@ -503,14 +564,16 @@ function HomeserverCard({
 
   return (
     <article
-      className={`hs-card ${hs.status}${leader ? " leader" : ""}`}
+      className={`hs-card ${hs.status}${leader ? " leader" : ""}${
+        hs.pending ? " pending" : ""
+      }`}
       style={
         {
           "--hs-accent": color,
           "--hs-key": keyColor,
         } as CSSProperties
       }
-      onClick={onClick}
+      onClick={hs.pending ? undefined : onClick}
     >
       {active && <span className="hs-card-wire" aria-hidden />}
 
@@ -528,9 +591,12 @@ function HomeserverCard({
                 <CrownIcon />
               </span>
             )}
-            <span className={`hs-card-pill ${hs.status}`}>
-              <span className={`hs-card-pill-dot ${hs.status}`} aria-hidden />
-              {hs.status}
+            <span className={`hs-card-pill ${hs.pending ? "dormant" : hs.status}`}>
+              <span
+                className={`hs-card-pill-dot ${hs.pending ? "dormant" : hs.status}`}
+                aria-hidden
+              />
+              {hs.pending ? "creating…" : hs.status}
             </span>
             {hs.island && (
               <span

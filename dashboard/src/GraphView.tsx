@@ -487,7 +487,7 @@ export function GraphView({
                   key={n.id}
                   className={`gv-node ${n.kind} ${lit ? "" : "dim"} ${
                     active ? "on" : "off"
-                  } ${
+                  } ${n.hs.pending ? "pending" : ""} ${
                     n.kind === "user" && selectedUser === n.user?.index
                       ? "sel"
                       : ""
@@ -503,7 +503,8 @@ export function GraphView({
                       setSelectedUser((cur) =>
                         cur === n.user!.index ? null : n.user!.index
                       );
-                    } else {
+                    } else if (!n.hs.pending) {
+                      // A placeholder has no real key/details yet.
                       onSelect(n.hs);
                     }
                   }}
@@ -572,7 +573,7 @@ export function GraphView({
                         {n.hs.label}
                       </text>
                       <text className="gv-hub-count" y={n.r + 22}>
-                        {n.hs.userCount} users
+                        {n.hs.pending ? "creating…" : `${n.hs.userCount} users`}
                       </text>
                     </>
                   ) : (

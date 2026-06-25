@@ -5371,3 +5371,39 @@ label.hs-create-user-profile.hs-batch-row {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Optimistic placeholder homeservers, shown while a create request is in flight.
+   They render dimmed with a soft pulse and are non-interactive until the real
+   node arrives over SSE. */
+.hs-card.pending {
+  cursor: default;
+  animation: hs-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes hs-pending-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.78;
+  }
+}
+
+.gv-node.pending {
+  animation: gv-pending-pulse 1.4s ease-in-out infinite;
+}
+
+.gv-node.pending .gv-hub-core {
+  stroke-dasharray: 5 4;
+}
+
+@keyframes gv-pending-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
