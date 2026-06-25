@@ -204,11 +204,18 @@ pub struct SimulatorConfig {
     pub tags_per_tick: [u32; 2],
     #[serde(default = "SimulatorConfig::default_follows")]
     pub follows_per_tick: [u32; 2],
+    /// Maximum number of data-plane operations (tick ops + dashboard actions)
+    /// allowed to run concurrently. Bounds in-flight network connections.
+    #[serde(default = "SimulatorConfig::default_concurrency")]
+    pub concurrency: usize,
 }
 
 impl SimulatorConfig {
     fn default_interval() -> u64 {
         20
+    }
+    fn default_concurrency() -> usize {
+        4
     }
     fn default_users() -> [u32; 2] {
         [0, 5]
@@ -233,6 +240,7 @@ impl Default for SimulatorConfig {
             posts_per_tick: Self::default_posts(),
             tags_per_tick: Self::default_tags(),
             follows_per_tick: Self::default_follows(),
+            concurrency: Self::default_concurrency(),
         }
     }
 }

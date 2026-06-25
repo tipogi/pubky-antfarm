@@ -23,3 +23,4 @@ users_per_tick = [0, 5]
 posts_per_tick = [0, 10]
 tags_per_tick = [0, 10]
 follows_per_tick = [0, 5]
+# concurrency = 4   # max data-plane ops (tick ops + dashboard actions) in flight at once

@@ -71,6 +71,11 @@ impl UserKeys {
         }
     }
 
+    /// Drop a registered user (used to roll back a reserved-but-failed signup).
+    pub fn remove(&mut self, index: usize) {
+        self.keys.remove(&index);
+    }
+
     pub fn get_user(&self, index: usize) -> Option<PublicKey> {
         self.keys.get(&index).cloned()
     }

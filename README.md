@@ -150,6 +150,7 @@ cp config.default.toml config.toml
 | `[simulator] posts_per_tick` | `[0, 10]` | Min/max new posts per tick |
 | `[simulator] tags_per_tick` | `[0, 10]` | Min/max new tags per tick |
 | `[simulator] follows_per_tick` | `[0, 5]` | Min/max new follows per tick |
+| `[simulator] concurrency` | `4` | Max data-plane ops (tick ops + dashboard actions) in flight at once; bounds in-flight connections |
 
 The env var `TEST_PUBKY_CONNECTION_STRING` overrides `postgres.url` if set.
 
@@ -296,6 +297,8 @@ After the initial setup (one user + profile + post + tag per homeserver), the si
 - **Follows**: 0-5 new follows per tick between random users (self-follows are skipped)
 
 All ranges and the tick interval are configurable in `[simulator]` in `config.toml`. When `max_users_per_homeserver` is set and a homeserver reaches that cap, the simulator stops signing up new users there and redirects those tick slots as extra posts, tags, or follows.
+
+Each tick runs its operations concurrently (up to `[simulator] concurrency`, default 4), and dashboard/CLI actions (create user, follow, tag, batch) run on their own tasks rather than the runtime loop. This means a click returns as soon as its own work finishes instead of waiting behind the current tick, and several actions can run in parallel. The shared simulation state is held behind a lock that is only taken for brief reads and commits — never across a network call — and the same `concurrency` limit bounds how many connections are open at once.
 
 ### Avatars
 

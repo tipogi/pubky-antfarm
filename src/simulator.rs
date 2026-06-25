@@ -1,12 +1,28 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 use colored::Colorize;
+use futures_util::stream::{self, StreamExt};
 use pubky_testnet::pubky::{PublicKey, Pubky};
 use rand::RngExt as _;
+use tokio::sync::{Notify, RwLock, Semaphore};
 
 use crate::config::SimulatorConfig;
-use crate::homeservers::Homeserver;
 use crate::social::{self, SessionCache};
+
+/// A handle to the runtime's shared mutable simulation state. Cloning is cheap
+/// (an `Arc`); the lock is taken only to read inputs and to commit results,
+/// never across a network `.await`.
+pub type RegistryHandle = Arc<RwLock<Registry>>;
+
+/// A point-in-time, cheap-to-clone view of an active homeserver, captured on the
+/// runtime loop (which owns the topology) and passed into spawned data-plane
+/// work so it never needs to lock the topology.
+#[derive(Clone)]
+pub struct HsSnapshot {
+    pub label: String,
+    pub public_key: PublicKey,
+}
 
 pub struct Registry {
     pub user_keys: social::UserKeys,
@@ -86,6 +102,44 @@ impl Registry {
     /// Record which homeserver a user index lives on.
     pub fn assign(&mut self, index: usize, homeserver: String) {
         self.assignments.insert(index, homeserver);
+    }
+
+    /// Roll back a reserved-but-failed user signup (drops its slot + key).
+    pub fn rollback_user(&mut self, index: usize) {
+        self.assignments.remove(&index);
+        self.user_keys.remove(index);
+    }
+
+    /// Choose a (follower, followee) pair for a follow, returning owned data so
+    /// the caller can release the lock before doing network I/O. `None` when no
+    /// valid, non-self, referable pair exists.
+    pub fn pick_follow(&self) -> Option<(usize, usize, PublicKey)> {
+        let (follower_idx, _) = self.user_keys.random_user()?;
+        let (followee_idx, followee_pk) = self.random_referable_user()?;
+        if social::UserKeys::keypair_at(follower_idx).public_key() == followee_pk {
+            return None;
+        }
+        Some((follower_idx, followee_idx, followee_pk))
+    }
+
+    /// Build a tag target URI (a random referable user's profile or post),
+    /// returning an owned `String` so the lock can be released before I/O.
+    pub fn pick_tag_target(&self) -> Option<String> {
+        let tag_user: bool = rand::rng().random();
+        if tag_user {
+            let (_, target_pk) = self.random_referable_user()?;
+            Some(format!(
+                "pubky://{}/pub/pubky.app/profile.json",
+                target_pk.z32()
+            ))
+        } else {
+            let (author_pk, post_id) = self.random_referable_post()?;
+            Some(format!(
+                "pubky://{}/pub/pubky.app/posts/{}",
+                author_pk.z32(),
+                post_id
+            ))
+        }
     }
 
     pub fn user_count_on(&self, label: &str) -> usize {
@@ -168,57 +222,103 @@ pub fn plan_tick(sim: &SimulatorConfig) -> VecDeque<SimOp> {
     ops
 }
 
+/// Run all of a tick's planned ops with bounded concurrency. The shared
+/// registry is locked only in short read/commit bursts inside each op, so up to
+/// `concurrency` network operations overlap. Returns the aggregated tick totals.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_tick_ops(
+    sdk: &Pubky,
+    snapshot: &[HsSnapshot],
+    registry: &RegistryHandle,
+    sessions: &SessionCache,
+    limiter: &Arc<Semaphore>,
+    dirty: &Arc<Notify>,
+    max_users: u32,
+    concurrency: usize,
+    ops: VecDeque<SimOp>,
+) -> TickSummary {
+    let results: Vec<TickSummary> = stream::iter(ops.into_iter())
+        .map(|op| run_op(sdk, snapshot, registry, sessions, limiter, dirty, max_users, op))
+        .buffer_unordered(concurrency.max(1))
+        .collect()
+        .await;
+
+    let mut acc = TickSummary::default();
+    for r in results {
+        acc.add(r);
+    }
+    acc
+}
+
 /// Execute exactly one planned op and return its contribution to the tick
-/// totals. Each op resolves its target(s) at call time so islanded/removed
-/// users are skipped correctly even though planning happened earlier.
+/// totals. Holds a concurrency permit for the duration and signals `dirty` on
+/// completion so the dashboard refreshes live. Each op resolves its target(s)
+/// at call time so islanded/removed users are skipped correctly.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_op(
     sdk: &Pubky,
-    homeservers: &[Homeserver],
-    registry: &mut Registry,
+    snapshot: &[HsSnapshot],
+    registry: &RegistryHandle,
     sessions: &SessionCache,
-    sim: &SimulatorConfig,
+    limiter: &Arc<Semaphore>,
+    dirty: &Arc<Notify>,
+    max_users: u32,
     op: SimOp,
 ) -> TickSummary {
-    let mut rng = rand::rng();
-    match op {
-        SimOp::User => run_user(sdk, homeservers, registry, sessions, sim, &mut rng).await,
+    let _permit = limiter.acquire().await.expect("limiter never closed");
+    let summary = match op {
+        SimOp::User => run_user(sdk, snapshot, registry, sessions, max_users).await,
         SimOp::Post => TickSummary {
             posts: create_one_post(sdk, sessions, registry).await,
             ..Default::default()
         },
         SimOp::Tag => TickSummary {
-            tags: create_one_tag(sdk, sessions, registry, &mut rng).await,
+            tags: create_one_tag(sdk, sessions, registry).await,
             ..Default::default()
         },
         SimOp::Follow => TickSummary {
             follows: create_one_follow(sdk, sessions, registry).await,
             ..Default::default()
         },
-    }
+    };
+    // Coalesced: many notifications collapse into a single publish.
+    dirty.notify_one();
+    summary
 }
 
-/// Sign up a new user on a random non-full homeserver. When every homeserver
-/// is at capacity, the slot is redirected to a random event (mirroring the old
-/// tick behavior).
-async fn run_user<R: rand::RngExt>(
+/// Sign up a new user on a random non-full homeserver. The slot is reserved
+/// under the write lock (so concurrent signups don't overshoot capacity) before
+/// the network signup; rolled back on failure. When every homeserver is at
+/// capacity, the slot is redirected to a random event.
+async fn run_user(
     sdk: &Pubky,
-    homeservers: &[Homeserver],
-    registry: &mut Registry,
+    snapshot: &[HsSnapshot],
+    registry: &RegistryHandle,
     sessions: &SessionCache,
-    sim: &SimulatorConfig,
-    rng: &mut R,
+    max_users: u32,
 ) -> TickSummary {
-    let max_users = sim.max_users_per_homeserver;
-    let (hs_label, hs_pk) = match pick_homeserver(homeservers, registry, max_users, rng) {
-        Some(hs) => (hs.label.clone(), hs.public_key.clone()),
-        None => return run_redirected_event(sdk, sessions, registry, rng).await,
+    // Reserve a slot + key under the lock, then release before the network call.
+    let reserved = {
+        let mut reg = registry.write().await;
+        match pick_homeserver(snapshot, &reg, max_users) {
+            Some((label, hs_pk)) => {
+                let (index, keypair) = reg.user_keys.create_next();
+                reg.assign(index, label);
+                Some((index, keypair, hs_pk))
+            }
+            None => None,
+        }
     };
 
-    let (index, keypair) = registry.user_keys.create_next();
+    let Some((index, keypair, hs_pk)) = reserved else {
+        return run_redirected_event(sdk, sessions, registry).await;
+    };
+
     match social::signup_and_write(sdk, index, &hs_pk, keypair, sessions).await {
         Ok((user_pk, post_id)) => {
-            registry.assign(index, hs_label);
-            registry.posts.push((user_pk, post_id));
+            let mut reg = registry.write().await;
+            reg.user_keys.register_at(index, user_pk.clone());
+            reg.posts.push((user_pk, post_id));
             TickSummary {
                 users: 1,
                 ..Default::default()
@@ -226,25 +326,26 @@ async fn run_user<R: rand::RngExt>(
         }
         Err(e) => {
             println!("    {} user signup: {e}", "error".red());
+            registry.write().await.rollback_user(index);
             TickSummary::default()
         }
     }
 }
 
 /// Perform one random event in place of a user signup that could not be placed.
-async fn run_redirected_event<R: rand::RngExt>(
+async fn run_redirected_event(
     sdk: &Pubky,
     sessions: &SessionCache,
-    registry: &mut Registry,
-    rng: &mut R,
+    registry: &RegistryHandle,
 ) -> TickSummary {
-    match rng.random_range(0..3) {
+    let choice = rand::rng().random_range(0..3);
+    match choice {
         0 => TickSummary {
             posts: create_one_post(sdk, sessions, registry).await,
             ..Default::default()
         },
         1 => TickSummary {
-            tags: create_one_tag(sdk, sessions, registry, rng).await,
+            tags: create_one_tag(sdk, sessions, registry).await,
             ..Default::default()
         },
         _ => TickSummary {
@@ -255,17 +356,11 @@ async fn run_redirected_event<R: rand::RngExt>(
 }
 
 /// Create one follow between two random (referable) users. Returns 1 on success.
-async fn create_one_follow(sdk: &Pubky, sessions: &SessionCache, registry: &mut Registry) -> u32 {
-    let Some((follower_idx, _)) = registry.user_keys.random_user() else {
+async fn create_one_follow(sdk: &Pubky, sessions: &SessionCache, registry: &RegistryHandle) -> u32 {
+    let Some((follower_idx, followee_idx, followee_pk)) = ({ registry.read().await.pick_follow() })
+    else {
         return 0;
     };
-    // The followee must be referable — island users cannot be followed.
-    let Some((followee_idx, followee_pk)) = registry.random_referable_user() else {
-        return 0;
-    };
-    if social::UserKeys::keypair_at(follower_idx).public_key() == followee_pk {
-        return 0;
-    }
 
     let session = match sessions.get(sdk, follower_idx).await {
         Ok(s) => s,
@@ -277,7 +372,7 @@ async fn create_one_follow(sdk: &Pubky, sessions: &SessionCache, registry: &mut 
 
     match social::create_follow(&session, &followee_pk.z32()).await {
         Ok(()) => {
-            registry.follows.push((follower_idx, followee_idx));
+            registry.write().await.follows.push((follower_idx, followee_idx));
             1
         }
         Err(e) => {
@@ -292,12 +387,11 @@ async fn create_one_follow(sdk: &Pubky, sessions: &SessionCache, registry: &mut 
 pub async fn batch(
     sdk: &Pubky,
     sessions: &SessionCache,
-    registry: &mut Registry,
+    registry: &RegistryHandle,
     from: usize,
     num_posts: u32,
     num_tags: u32,
 ) -> TickSummary {
-    let mut rng = rand::rng();
     let mut created_posts = 0u32;
     let mut created_tags = 0u32;
 
@@ -306,7 +400,7 @@ pub async fn batch(
     }
 
     for _ in 0..num_tags {
-        created_tags += create_one_tag_as(sdk, sessions, registry, from, &mut rng).await;
+        created_tags += create_one_tag_as(sdk, sessions, registry, from).await;
     }
 
     if created_posts > 0 || created_tags > 0 {
@@ -328,8 +422,8 @@ pub async fn batch(
     }
 }
 
-async fn create_one_post(sdk: &Pubky, sessions: &SessionCache, registry: &mut Registry) -> u32 {
-    let Some((index, _)) = registry.user_keys.random_user() else {
+async fn create_one_post(sdk: &Pubky, sessions: &SessionCache, registry: &RegistryHandle) -> u32 {
+    let Some((index, _)) = ({ registry.read().await.user_keys.random_user() }) else {
         return 0;
     };
     create_one_post_as(sdk, sessions, registry, index).await
@@ -338,7 +432,7 @@ async fn create_one_post(sdk: &Pubky, sessions: &SessionCache, registry: &mut Re
 async fn create_one_post_as(
     sdk: &Pubky,
     sessions: &SessionCache,
-    registry: &mut Registry,
+    registry: &RegistryHandle,
     from: usize,
 ) -> u32 {
     let content = social::random_content();
@@ -352,7 +446,7 @@ async fn create_one_post_as(
 
     match social::create_post(&session, &content).await {
         Ok((author_pk, post_id)) => {
-            registry.posts.push((author_pk, post_id));
+            registry.write().await.posts.push((author_pk, post_id));
             1
         }
         Err(e) => {
@@ -363,38 +457,23 @@ async fn create_one_post_as(
     }
 }
 
-async fn create_one_tag<R: rand::RngExt>(
-    sdk: &Pubky,
-    sessions: &SessionCache,
-    registry: &mut Registry,
-    rng: &mut R,
-) -> u32 {
-    let Some((index, _)) = registry.user_keys.random_user() else {
+async fn create_one_tag(sdk: &Pubky, sessions: &SessionCache, registry: &RegistryHandle) -> u32 {
+    let Some((index, _)) = ({ registry.read().await.user_keys.random_user() }) else {
         return 0;
     };
-    create_one_tag_as(sdk, sessions, registry, index, rng).await
+    create_one_tag_as(sdk, sessions, registry, index).await
 }
 
-async fn create_one_tag_as<R: rand::RngExt>(
+async fn create_one_tag_as(
     sdk: &Pubky,
     sessions: &SessionCache,
-    registry: &mut Registry,
+    registry: &RegistryHandle,
     from: usize,
-    rng: &mut R,
 ) -> u32 {
     let tag_label = social::random_tag_label();
 
-    let tag_user: bool = rng.random();
     // Targets must be referable — island users (and their posts) are off-limits.
-    let target_uri = if tag_user {
-        if let Some((_, target_pk)) = registry.random_referable_user() {
-            format!("pubky://{}/pub/pubky.app/profile.json", target_pk.z32())
-        } else {
-            return 0;
-        }
-    } else if let Some((author_pk, post_id)) = registry.random_referable_post() {
-        format!("pubky://{}/pub/pubky.app/posts/{}", author_pk.z32(), post_id)
-    } else {
+    let Some(target_uri) = ({ registry.read().await.pick_tag_target() }) else {
         return 0;
     };
 
@@ -416,20 +495,19 @@ async fn create_one_tag_as<R: rand::RngExt>(
     }
 }
 
-fn pick_homeserver<'a, R: rand::RngExt>(
-    homeservers: &'a [Homeserver],
+fn pick_homeserver(
+    snapshot: &[HsSnapshot],
     registry: &Registry,
     max_users: u32,
-    rng: &mut R,
-) -> Option<&'a Homeserver> {
-    let eligible: Vec<&Homeserver> = homeservers
+) -> Option<(String, PublicKey)> {
+    let eligible: Vec<&HsSnapshot> = snapshot
         .iter()
         .filter(|hs| !registry.at_user_capacity(&hs.label, max_users))
         .collect();
     if eligible.is_empty() {
         return None;
     }
-    let idx = rng.random_range(0..eligible.len());
-    Some(eligible[idx])
+    let idx = rand::rng().random_range(0..eligible.len());
+    Some((eligible[idx].label.clone(), eligible[idx].public_key.clone()))
 }
 
