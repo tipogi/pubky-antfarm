@@ -255,7 +255,7 @@ function UserActionButtons({
         className="hs-user-action-trigger"
         disabled={disabled}
         onClick={onPost}
-        title="Create mention or repost"
+        title="Create a post, mention, or repost"
       >
         <span className="hs-user-action-glyph">
           <PostActionIcon />

@@ -18,6 +18,7 @@ const MENTION_TEMPLATES: &[&str] = &[
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Variant {
+    Short,
     Mention,
     Repost,
     RepostMention,
@@ -26,6 +27,7 @@ pub(crate) enum Variant {
 impl Variant {
     pub(crate) fn parse(kind: &str) -> anyhow::Result<Self> {
         match kind.trim() {
+            "short" => Ok(Self::Short),
             "mention" => Ok(Self::Mention),
             "repost" => Ok(Self::Repost),
             "repost_mention" => Ok(Self::RepostMention),
@@ -80,6 +82,7 @@ fn short_suffix() -> String {
 
 fn build_content(variant: Variant, mention_z32: Option<&str>) -> String {
     match variant {
+        Variant::Short => random_content(),
         Variant::Mention => mention_snippet(mention_z32.expect("mention key checked upstream")),
         Variant::Repost => random_content(),
         Variant::RepostMention => {
@@ -113,14 +116,14 @@ pub(crate) async fn create(
         Variant::Mention | Variant::RepostMention => {
             Some(normalize_mention_key(mention_key.unwrap_or_default())?)
         }
-        Variant::Repost => None,
+        Variant::Short | Variant::Repost => None,
     };
 
     let parent = match variant {
         Variant::Repost | Variant::RepostMention => {
             Some(normalize_post_uri(post_uri.unwrap_or_default())?)
         }
-        Variant::Mention => None,
+        Variant::Short | Variant::Mention => None,
     };
 
     let content = build_content(variant, mention_z32.as_deref());

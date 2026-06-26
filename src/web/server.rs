@@ -36,7 +36,7 @@ struct AppState {
 /// - `POST /api/follow` — user follows a target pubky
 /// - `POST /api/tag` — user tags a target URI with a label
 /// - `POST /api/batch` — create many posts and/or tags at once
-/// - `POST /api/post/social` — create a mention, repost, or repost+mention short post
+/// - `POST /api/post/social` — create a short post, mention, repost, or repost+mention
 pub async fn serve(
     addr: String,
     state: watch::Receiver<DashboardState>,

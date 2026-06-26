@@ -634,10 +634,20 @@ impl Runtime {
             .collect()
     }
 
-    /// Keep the simulator's island cache aligned with homeserver state.
+    /// Labels of every dormant (stopped) homeserver — out of the simulator
+    /// rotation, so their users must not author new activity.
+    fn dormant_labels(&self) -> std::collections::HashSet<String> {
+        self.dormant.values().map(|hs| hs.label.clone()).collect()
+    }
+
+    /// Keep the simulator's island and dormant caches aligned with homeserver
+    /// state.
     async fn sync_islands(&self) {
-        let labels = self.island_labels();
-        self.registry.write().await.islands = labels;
+        let islands = self.island_labels();
+        let dormant = self.dormant_labels();
+        let mut reg = self.registry.write().await;
+        reg.islands = islands;
+        reg.dormant = dormant;
     }
 
     /// Resolve a homeserver index to its label + public key, searching active

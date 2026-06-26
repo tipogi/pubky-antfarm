@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { api } from "./api";
 import type { RunAction } from "./App";
 
-export type SocialPostKind = "mention" | "repost" | "repost_mention";
+export type SocialPostKind = "short" | "mention" | "repost" | "repost_mention";
 
 function isValidPubkyKey(value: string): boolean {
   const key = value.trim();
@@ -32,7 +32,7 @@ export function SocialPostModal({
   onClose: () => void;
   onAction: RunAction;
 }) {
-  const [kind, setKind] = useState<SocialPostKind>("mention");
+  const [kind, setKind] = useState<SocialPostKind>("short");
   const [mentionKey, setMentionKey] = useState("");
   const [postUri, setPostUri] = useState("");
 
@@ -41,7 +41,8 @@ export function SocialPostModal({
 
   const canSubmit =
     !busy &&
-    ((kind === "mention" && mentionValid) ||
+    (kind === "short" ||
+      (kind === "mention" && mentionValid) ||
       (kind === "repost" && postUriValid) ||
       (kind === "repost_mention" && mentionValid && postUriValid));
 
@@ -101,6 +102,17 @@ export function SocialPostModal({
                 <input
                   type="radio"
                   name="social-post-kind"
+                  value="short"
+                  checked={kind === "short"}
+                  disabled={busy}
+                  onChange={() => setKind("short")}
+                />
+                <span className="hs-radio-text">Short post</span>
+              </label>
+              <label className="hs-radio-option">
+                <input
+                  type="radio"
+                  name="social-post-kind"
                   value="mention"
                   checked={kind === "mention"}
                   disabled={busy}
@@ -131,6 +143,12 @@ export function SocialPostModal({
                 <span className="hs-radio-text">Repost + mention</span>
               </label>
             </fieldset>
+
+            {kind === "short" && (
+              <p className="hs-action-modal-help">
+                Publishes a short post with random generated content.
+              </p>
+            )}
 
             {(kind === "mention" || kind === "repost_mention") && (
               <label className="hs-action-modal-field">

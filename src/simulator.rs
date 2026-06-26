@@ -35,6 +35,9 @@ pub struct Registry {
     /// Labels of homeservers in island mode. Users on these homeservers cannot
     /// be referenced (followed/tagged) by the simulator.
     pub islands: HashSet<String>,
+    /// Labels of dormant (stopped) homeservers. Users on these homeservers are
+    /// out of the simulator rotation and must not author new activity.
+    pub dormant: HashSet<String>,
 }
 
 impl Registry {
@@ -48,6 +51,7 @@ impl Registry {
             assignments: HashMap::new(),
             follows: Vec::new(),
             islands: HashSet::new(),
+            dormant: HashSet::new(),
         }
     }
 
@@ -56,6 +60,32 @@ impl Registry {
         self.assignments
             .get(&index)
             .is_some_and(|label| self.islands.contains(label))
+    }
+
+    /// Whether a user index lives on a dormant (stopped) homeserver, which is
+    /// out of the simulator rotation and must not author new activity.
+    fn is_dormant_user(&self, index: usize) -> bool {
+        self.assignments
+            .get(&index)
+            .is_some_and(|label| self.dormant.contains(label))
+    }
+
+    /// Pick a random user whose homeserver is in the active simulator rotation.
+    fn random_active_user(&self) -> Option<(usize, PublicKey)> {
+        if self.dormant.is_empty() {
+            return self.user_keys.random_user();
+        }
+        let eligible: Vec<(usize, &PublicKey)> = self
+            .user_keys
+            .all()
+            .filter(|(index, _)| !self.is_dormant_user(*index))
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        let idx = rand::rng().random_range(0..eligible.len());
+        let (index, pk) = eligible[idx];
+        Some((index, pk.clone()))
     }
 
     /// Pick a random user that is allowed to be referenced (not on an island).
@@ -114,7 +144,7 @@ impl Registry {
     /// the caller can release the lock before doing network I/O. `None` when no
     /// valid, non-self, referable pair exists.
     pub fn pick_follow(&self) -> Option<(usize, usize, PublicKey)> {
-        let (follower_idx, _) = self.user_keys.random_user()?;
+        let (follower_idx, _) = self.random_active_user()?;
         let (followee_idx, followee_pk) = self.random_referable_user()?;
         if social::UserKeys::keypair_at(follower_idx).public_key() == followee_pk {
             return None;
@@ -423,7 +453,7 @@ pub async fn batch(
 }
 
 async fn create_one_post(sdk: &Pubky, sessions: &SessionCache, registry: &RegistryHandle) -> u32 {
-    let Some((index, _)) = ({ registry.read().await.user_keys.random_user() }) else {
+    let Some((index, _)) = ({ registry.read().await.random_active_user() }) else {
         return 0;
     };
     create_one_post_as(sdk, sessions, registry, index).await
@@ -458,7 +488,7 @@ async fn create_one_post_as(
 }
 
 async fn create_one_tag(sdk: &Pubky, sessions: &SessionCache, registry: &RegistryHandle) -> u32 {
-    let Some((index, _)) = ({ registry.read().await.user_keys.random_user() }) else {
+    let Some((index, _)) = ({ registry.read().await.random_active_user() }) else {
         return 0;
     };
     create_one_tag_as(sdk, sessions, registry, index).await
