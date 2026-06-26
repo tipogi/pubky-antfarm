@@ -5,9 +5,9 @@ import { hubColorFor } from "./hubColors";
 function DetailsActionIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11v5" />
-      <circle cx="12" cy="7.75" r="0.6" fill="currentColor" stroke="none" />
+      <path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6z" />
+      <circle cx="12" cy="10.5" r="1.6" />
+      <path d="M12 12.1V15" />
     </svg>
   );
 }

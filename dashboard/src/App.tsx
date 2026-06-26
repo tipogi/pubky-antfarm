@@ -40,7 +40,7 @@ export default function App() {
   const [detailHs, setDetailHs] = useState<Homeserver | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
-  const [view, setView] = useState<View>("graph");
+  const [view, setView] = useState<View>("homeservers");
   const [createHsOpen, setCreateHsOpen] = useState(false);
   const [pkarrModal, setPkarrModal] = useState<{
     label: string;
@@ -167,16 +167,16 @@ export default function App() {
         </div>
         <div className="rail-nav" role="tablist">
           <RailButton
-            label="Graph"
-            active={view === "graph"}
-            onClick={() => setView("graph")}
-            icon={<GraphIcon />}
-          />
-          <RailButton
             label="Homeservers"
             active={view === "homeservers"}
             onClick={() => setView("homeservers")}
             icon={<ServersIcon />}
+          />
+          <RailButton
+            label="Graph"
+            active={view === "graph"}
+            onClick={() => setView("graph")}
+            icon={<GraphIcon />}
           />
           <RailButton
             label="Stats"

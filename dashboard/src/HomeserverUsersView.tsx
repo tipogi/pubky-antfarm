@@ -303,12 +303,12 @@ function UserActionButtons({
         className="hs-user-action-trigger"
         disabled={disabled}
         onClick={onDetails}
-        title="View user details and recovery phrase"
+        title="View recovery phrase (mnemonic)"
       >
         <span className="hs-user-action-glyph">
           <DetailsActionIcon className="hs-user-action-icon" />
         </span>
-        <span className="hs-user-action-label">Details</span>
+        <span className="hs-user-action-label">Mnemonic</span>
       </button>
     </div>
   );

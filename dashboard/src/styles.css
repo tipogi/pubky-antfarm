@@ -4234,22 +4234,27 @@ label.hs-create-user-profile.hs-batch-row {
 
 .hs-events-table th:nth-child(1),
 .hs-events-table td:nth-child(1) {
-  width: 22%;
+  width: 20%;
 }
 
 .hs-events-table th:nth-child(2),
 .hs-events-table td:nth-child(2) {
-  width: 10%;
+  width: 9%;
 }
 
 .hs-events-table th:nth-child(3),
 .hs-events-table td:nth-child(3) {
-  width: 44%;
+  width: 40%;
 }
 
 .hs-events-table th:nth-child(4),
 .hs-events-table td:nth-child(4) {
-  width: 24%;
+  width: 23%;
+}
+
+.hs-events-table th:nth-child(5),
+.hs-events-table td:nth-child(5) {
+  width: 8%;
 }
 
 .hs-events-table th,
@@ -4309,6 +4314,75 @@ label.hs-create-user-profile.hs-batch-row {
 
 .hs-events-hash {
   color: rgba(255, 255, 255, 0.72);
+}
+
+.hs-events-view {
+  text-align: center;
+}
+
+.hs-events-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.hs-events-view-btn:hover {
+  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hs-events-view-btn.active {
+  color: var(--hs-accent, #8fd0ff);
+  border-color: var(--hs-accent, #8fd0ff);
+  background: rgba(143, 208, 255, 0.12);
+}
+
+.hs-events-view-icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hs-events-content-row td {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.hs-events-content-pre {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hs-events-content-status {
+  margin: 0;
+  font-size: 12px;
+}
+
+.hs-events-content-status.error {
+  color: #ff9b8f;
 }
 
 .hs-events-json {

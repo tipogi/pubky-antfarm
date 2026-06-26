@@ -246,6 +246,45 @@ export async function loadUserEvents(
   }
 }
 
+export interface EventContentResult {
+  ok: boolean;
+  /** Response `Content-Type`, when the homeserver reported one. */
+  contentType?: string;
+  /** Raw response body (pretty-printed by the caller when it is JSON). */
+  body?: string;
+  error?: string;
+}
+
+/**
+ * Read the stored content of a single event by its `pubky://<pk>/<path>` URI,
+ * directly from the homeserver via the SDK client. Useful for inspecting what a
+ * PUT event actually wrote. Not cached — each open reflects live storage.
+ */
+export async function loadEventContent(
+  uri: string,
+  homeserverUrl: string
+): Promise<EventContentResult> {
+  const ref = parsePubkyUri(uri);
+  if (!ref) return { ok: false, error: "Invalid event URI" };
+  try {
+    const res = await hsFetch(directUrl(homeserverUrl, ref.pk, ref.path));
+    if (res.status === 404) {
+      return { ok: false, error: "Content no longer exists (deleted)" };
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return {
+      ok: true,
+      contentType: res.headers.get("content-type") ?? undefined,
+      body: await res.text(),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to load content",
+    };
+  }
+}
+
 /** List the unique tag labels a user has authored, read directly from their homeserver. */
 export function loadTags(ctx: UserStorageContext): Promise<string[]> {
   const key = storageKey(ctx);

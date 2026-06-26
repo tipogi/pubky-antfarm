@@ -1,10 +1,35 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import {
+  loadEventContent,
   loadUserEvents,
   USER_EVENTS_PAGE_SIZE,
+  type EventContentResult,
   type UserEvent,
 } from "./pubky";
 import { hubColorFor } from "./hubColors";
+
+function formatContent(result: EventContentResult): string {
+  const body = result.body ?? "";
+  const isJson =
+    result.contentType?.includes("json") || /^\s*[[{]/.test(body);
+  if (isJson) {
+    try {
+      return JSON.stringify(JSON.parse(body), null, 2);
+    } catch {
+      // Fall through to raw body when it isn't actually valid JSON.
+    }
+  }
+  return body;
+}
+
+function EyeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 
 function shortPath(path: string): string {
   return path.length > 48 ? `${path.slice(0, 28)}…${path.slice(-16)}` : path;
@@ -44,6 +69,10 @@ export function UserEventsModal({
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<UserEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openRow, setOpenRow] = useState<number | null>(null);
+  const [contentByRow, setContentByRow] = useState<
+    Record<number, EventContentResult | "loading">
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +93,26 @@ export function UserEventsModal({
       cancelled = true;
     };
   }, [userPk, homeserverUrl]);
+
+  // Reset any open content view when the underlying user/homeserver changes.
+  useEffect(() => {
+    setOpenRow(null);
+    setContentByRow({});
+  }, [userPk, homeserverUrl]);
+
+  const toggleContent = (index: number, event: UserEvent) => {
+    if (openRow === index) {
+      setOpenRow(null);
+      return;
+    }
+    setOpenRow(index);
+    if (contentByRow[index] === undefined) {
+      setContentByRow((prev) => ({ ...prev, [index]: "loading" }));
+      void loadEventContent(event.uri, homeserverUrl).then((result) => {
+        setContentByRow((prev) => ({ ...prev, [index]: result }));
+      });
+    }
+  };
 
   const countLabel = loading
     ? "Loading…"
@@ -131,34 +180,77 @@ export function UserEventsModal({
                       <th>Type</th>
                       <th>Path</th>
                       <th>Hash</th>
+                      <th className="hs-events-th-view" aria-label="View" />
                     </tr>
                   </thead>
                   <tbody>
-                    {events.map((event, index) => (
-                      <tr key={`${event.type}-${event.uri}-${index}`}>
-                        <td className="hs-events-time" title={event.cursor}>
-                          {event.cursor ?? "—"}
-                        </td>
-                        <td className="hs-events-type">
-                          <span
-                            className={`hs-events-type-badge ${event.type === "PUT" ? "put" : "del"}`}
-                          >
-                            {event.type}
-                          </span>
-                        </td>
-                        <td className="hs-events-path" title={event.uri}>
-                          {shortPath(event.path)}
-                        </td>
-                        <td
-                          className="hs-events-hash"
-                          title={event.contentHash ?? undefined}
-                        >
-                          {event.contentHash
-                            ? shortHash(event.contentHash)
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {events.map((event, index) => {
+                      const canView = event.type === "PUT";
+                      const open = openRow === index;
+                      const content = contentByRow[index];
+                      return (
+                        <Fragment key={`${event.type}-${event.uri}-${index}`}>
+                          <tr className={open ? "is-open" : undefined}>
+                            <td className="hs-events-time" title={event.cursor}>
+                              {event.cursor ?? "—"}
+                            </td>
+                            <td className="hs-events-type">
+                              <span
+                                className={`hs-events-type-badge ${event.type === "PUT" ? "put" : "del"}`}
+                              >
+                                {event.type}
+                              </span>
+                            </td>
+                            <td className="hs-events-path" title={event.uri}>
+                              {shortPath(event.path)}
+                            </td>
+                            <td
+                              className="hs-events-hash"
+                              title={event.contentHash ?? undefined}
+                            >
+                              {event.contentHash
+                                ? shortHash(event.contentHash)
+                                : "—"}
+                            </td>
+                            <td className="hs-events-view">
+                              {canView && (
+                                <button
+                                  type="button"
+                                  className={`hs-events-view-btn${open ? " active" : ""}`}
+                                  onClick={() => toggleContent(index, event)}
+                                  aria-label={
+                                    open ? "Hide content" : "View content"
+                                  }
+                                  aria-expanded={open}
+                                  title={open ? "Hide content" : "View content"}
+                                >
+                                  <EyeIcon className="hs-events-view-icon" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          {open && (
+                            <tr className="hs-events-content-row">
+                              <td colSpan={5}>
+                                {content === "loading" || content === undefined ? (
+                                  <p className="hs-events-content-status muted">
+                                    Loading content…
+                                  </p>
+                                ) : content.ok ? (
+                                  <pre className="hs-events-content-pre">
+                                    {formatContent(content)}
+                                  </pre>
+                                ) : (
+                                  <p className="hs-events-content-status error">
+                                    {content.error ?? "Failed to load content"}
+                                  </p>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
