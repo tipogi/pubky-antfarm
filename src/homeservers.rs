@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
 use pubky_testnet::pubky::{Keypair, PublicKey};
 use pubky_testnet::pubky_homeserver::{ConfigToml, ConnectionString, HomeserverApp, MockDataDir};
 use pubky_testnet::StaticTestnet;
 
-use crate::config::{AntfarmConfig, HomeserverEntry};
+use crate::config::{AntfarmConfig, HomeserverEntry, HomeserverInitialState};
 
 /// A homeserver tracked by the runtime, with the metadata needed for both
 /// simulator activity (the `PublicKey`) and the dashboard (label, seed, URL).
@@ -23,6 +25,11 @@ pub struct Homeserver {
     pub island: bool,
 }
 
+pub struct StartupHomeservers {
+    pub active: Vec<Homeserver>,
+    pub dormant: HashMap<u8, Homeserver>,
+}
+
 fn admin_url(hs: &HomeserverApp) -> String {
     hs.admin_server()
         .map(|admin| format!("http://{}", admin.listen_socket()))
@@ -40,7 +47,7 @@ fn test_config(pg_url: &str, label: &str, storage_quota_mb: u64) -> anyhow::Resu
 pub async fn start_all(
     testnet: &mut StaticTestnet,
     config: &AntfarmConfig,
-) -> anyhow::Result<Vec<Homeserver>> {
+) -> anyhow::Result<StartupHomeservers> {
     let quota_mb = config.user_storage_quota_mb;
     let hs1_app = testnet.homeserver_app();
     let hs1_pk = hs1_app.public_key();
@@ -49,35 +56,63 @@ pub async fn start_all(
     let hs1_db = crate::db::connection_string(config.postgres_url(), "hs1");
     print_hs("hs1", &hs1_pk.z32(), &hs1_http);
 
-    let mut homeservers: Vec<Homeserver> = vec![Homeserver {
-        label: "hs1".into(),
-        seed: 0,
-        public_key: hs1_pk,
-        http_url: hs1_http,
-        admin_url: hs1_admin,
-        database_url: hs1_db,
-        storage_quota_mb: quota_mb,
-        island: false,
-    }];
+    let mut active = Vec::new();
+    let mut dormant = HashMap::new();
+
+    push_by_state(
+        &mut active,
+        &mut dormant,
+        config.main_homeserver.state,
+        Homeserver {
+            label: "hs1".into(),
+            seed: 0,
+            public_key: hs1_pk,
+            http_url: hs1_http,
+            admin_url: hs1_admin,
+            database_url: hs1_db,
+            storage_quota_mb: quota_mb,
+            island: config.main_homeserver.island,
+        },
+    );
+
     for entry in &config.homeservers {
         let conn_str = crate::db::connection_string(config.postgres_url(), &entry.label);
         let hs = create_fixed(testnet, config.postgres_url(), entry, quota_mb).await?;
         let pk = hs.public_key();
         let http = hs.icann_http_url().to_string();
         print_hs(&entry.label, &pk.z32(), &http);
-        homeservers.push(Homeserver {
-            label: entry.label.clone(),
-            seed: entry.seed,
-            public_key: pk,
-            http_url: http,
-            admin_url: admin_url(hs),
-            database_url: conn_str,
-            storage_quota_mb: quota_mb,
-            island: false,
-        });
+        push_by_state(
+            &mut active,
+            &mut dormant,
+            entry.state,
+            Homeserver {
+                label: entry.label.clone(),
+                seed: entry.seed,
+                public_key: pk,
+                http_url: http,
+                admin_url: admin_url(hs),
+                database_url: conn_str,
+                storage_quota_mb: quota_mb,
+                island: entry.island,
+            },
+        );
     }
 
-    Ok(homeservers)
+    Ok(StartupHomeservers { active, dormant })
+}
+
+fn push_by_state(
+    active: &mut Vec<Homeserver>,
+    dormant: &mut HashMap<u8, Homeserver>,
+    state: HomeserverInitialState,
+    homeserver: Homeserver,
+) {
+    match state {
+        HomeserverInitialState::Active => active.push(homeserver),
+        HomeserverInitialState::Dormant => {
+            dormant.insert(homeserver.seed, homeserver);
+        }
+    }
 }
 
 async fn create_fixed<'a>(

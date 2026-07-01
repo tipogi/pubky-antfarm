@@ -70,7 +70,7 @@ cargo run -- list
 
 ### `homeserver`
 
-Create, seed, or stop homeservers on a running antfarm -- no restart needed.
+Create homeservers and change their simulator state on a running antfarm -- no restart needed.
 
 ```bash
 cargo run -- homeserver create --index 3   # create hs4 (dormant, no events)
@@ -81,11 +81,11 @@ cargo run -- homeserver seed   --index 3   # resume hs4 in simulator
 
 **create** creates `hs{index+1}` (seed `[index; 32]`) with database `pubky_antfarm_hs{index+1}` and joins the DHT. The homeserver is reachable but the simulator does not write to it yet.
 
-**seed** adds a created homeserver to the simulator rotation. The simulator begins placing users, posts, tags, and follows on it. Can also resume a stopped homeserver.
+**seed** activates a running homeserver by adding it to the simulator rotation. The simulator begins placing users, posts, tags, and follows on it. Can also resume a stopped homeserver.
 
 **stop** removes the homeserver from the simulator rotation. It stays running and its users remain reachable via DHT -- it just stops receiving new simulated activity.
 
-The index must be 1-23 (0 is reserved for the built-in hs1, max is `max_homeservers - 1`). Commands communicate with the running antfarm via a TCP admin socket on `127.0.0.1:6300`.
+`create --index 0` is blocked because hs1 is built in, but `seed --index 0` and `stop --index 0` can activate or pause hs1 in the simulator. The max index is `max_homeservers - 1`. Commands communicate with the running antfarm via a TCP admin socket on `127.0.0.1:6300`.
 
 ### `seed`
 
@@ -143,7 +143,8 @@ cp config.default.toml config.toml
 | `tracing` | `true` | Enable tracing subscriber. When `true`, logs are controlled by `RUST_LOG` or a built-in default filter |
 | `max_homeservers` | `24` | Maximum homeserver slots and the starting index for user key derivation |
 | `[postgres] url` | `postgres://…localhost:5432/postgres` | Postgres connection string |
-| `[[homeservers]]` | hs2 (seed 1), hs3 (seed 2) | Swarm homeservers beyond the built-in hs1 |
+| `[main_homeserver]` | active, mainland | Initial simulator state for built-in hs1 |
+| `[[homeservers]]` | hs2 (seed 1), hs3 (seed 2), active, mainland | Swarm homeservers beyond the built-in hs1 |
 | `[simulator] interval_secs` | `20` | Seconds between simulator ticks |
 | `[simulator] max_users_per_homeserver` | `0` | Cap users per homeserver (`0` = unlimited). When full, user slots become extra posts/tags/follows |
 | `[simulator] users_per_tick` | `[0, 5]` | Min/max new users per tick |
@@ -158,6 +159,29 @@ The env var `TEST_PUBKY_CONNECTION_STRING` overrides `postgres.url` if set.
 |----------------------|-------------|
 | `TEST_PUBKY_CONNECTION_STRING` | Overrides `postgres.url` from config |
 | `RUST_LOG` | Override the tracing filter (standard `EnvFilter` syntax) |
+
+### Homeserver State
+
+Each homeserver is always a running, reachable server once created. Two config/runtime flags decide how the simulator treats it:
+
+- **active** homeservers are in simulator rotation and can receive new simulated users, posts, tags, and follows.
+- **dormant** homeservers stay running and discoverable, but the simulator does not create new activity on them until they are seeded.
+- **mainland** homeservers can be referenced by cross-homeserver activity.
+- **island** homeservers can still author activity when active, but their users and posts are excluded as follow/tag/mention targets.
+
+`[main_homeserver]` configures the built-in hs1 simulator state. hs1 always uses seed `[0; 32]`; this section does not change its keypair.
+
+```toml
+[main_homeserver]
+state = "active"   # active | dormant
+island = false     # false = mainland, true = island
+
+[[homeservers]]
+label = "hs2"
+seed = 1
+state = "dormant"
+island = true
+```
 
 ## Architecture
 
@@ -200,25 +224,19 @@ Same seeds produce the same public keys every run, so external services can hard
 
 ### Adding Homeservers
 
-**At startup** -- append an entry to the `[[homeservers]]` array in `config.toml`:
+Add startup homeservers by appending entries to the `[[homeservers]]` array in `config.toml`:
 
 ```toml
 [[homeservers]]
 label = "hs4"
 seed = 3
+state = "dormant" # active | dormant
+island = false    # false = mainland, true = isolated from cross-homeserver references
 ```
 
-The label drives the database name (`pubky_antfarm_hs4`) and the seed produces a deterministic keypair. Everything else -- database creation, pkarr publishing, DHT registration -- happens automatically.
+The label drives the database name (`pubky_antfarm_hs4`) and the seed produces a deterministic keypair. `state` controls whether the homeserver starts in simulator rotation, and `island` controls whether its users can be referenced by cross-homeserver activity. Everything else -- database creation, pkarr publishing, DHT registration -- happens automatically.
 
-**At runtime** -- use the `homeserver` command to create and control homeservers on a running antfarm:
-
-```bash
-cargo run -- homeserver create --index 3   # create hs4 (dormant)
-cargo run -- homeserver seed   --index 3   # start simulator activity
-cargo run -- homeserver stop   --index 3   # pause simulator activity
-```
-
-See the [`homeserver` command](#homeserver) for details.
+For runtime changes, see the [`homeserver` command](#homeserver).
 
 ## Dashboard
 
@@ -230,23 +248,24 @@ HTTP + Server-Sent Events on `dashboard_addr` (default `127.0.0.1:6400`):
 - `GET /api/events` — SSE stream pushing the full snapshot on connect and on every
   homeserver topology change
 - `GET /api/activity` — SSE stream of per-tick simulator deltas
-- `POST /api/homeserver/create` · `seed` · `stop` — control a homeserver (body `{ "index": N }`)
+- `POST /api/homeserver/create` · `seed` · `stop` — control active/dormant state
+- `POST /api/homeserver/island` — toggle island/mainland state
 - `POST /api/user` — create a user (body `{ "hs": N, "profile": bool }`)
 
 These POST routes bridge directly to the same control channel used by the
 `homeserver` / `seed user` CLI commands, so the dashboard can create, start, stop,
-and add users interactively.
+isolate, and add users interactively.
 
 The dashboard has three views, selectable from the left icon rail:
 
-- **Graph** (default) — an interactive network graph. Each homeserver is a hub and
+- **Homeservers** (default) — a card grid of every homeserver (active + dormant). Click one to
+  open a drawer where you can toggle it between **active** and **dormant**, toggle
+  island mode, add users, and copy its keys/URL.
+- **Graph** — an interactive network graph. Each homeserver is a hub and
   each of its users is a node (rendered as a key). Hovering a user shows a card with
   their avatar, name, public key, and tags; clicking a user reveals their follow
   relationships. Includes pan, zoom, fit-to-view, and an inline create-homeserver
   control.
-- **Homeservers** — a card grid of every homeserver (active + dormant). Click one to
-  open a drawer where you can toggle it between **active** and **dormant**, add
-  users, and copy its keys/URL.
 - **Stats** — network info, simulator settings, and live activity totals + feed.
 
 Profiles, avatars, and tags shown in the graph are fetched live from each
@@ -289,14 +308,14 @@ Databases must be reset every run because the DHT is ephemeral -- old user recor
 
 ## Simulator
 
-After the initial setup (one user + profile + post + tag per homeserver), the simulator runs in a loop creating random activity:
+After the initial setup (one user + profile + post + tag per active homeserver), the simulator runs in a loop creating random activity:
 
-- **Users**: 0-5 new signups per tick, assigned to a random homeserver
+- **Users**: 0-5 new signups per tick, assigned to a random active homeserver
 - **Posts**: 0-10 new posts per tick from existing users
 - **Tags**: 0-10 new tags per tick, targeting random users or posts
 - **Follows**: 0-5 new follows per tick between random users (self-follows are skipped)
 
-All ranges and the tick interval are configurable in `[simulator]` in `config.toml`. When `max_users_per_homeserver` is set and a homeserver reaches that cap, the simulator stops signing up new users there and redirects those tick slots as extra posts, tags, or follows.
+All ranges and the tick interval are configurable in `[simulator]` in `config.toml`. Dormant homeservers are skipped for new simulator activity. Island homeservers can author activity when active, but their users and posts are not selected as cross-homeserver targets. When `max_users_per_homeserver` is set and a homeserver reaches that cap, the simulator stops signing up new users there and redirects those tick slots as extra posts, tags, or follows.
 
 Each tick runs its operations concurrently (up to `[simulator] concurrency`, default 4), and dashboard/CLI actions (create user, follow, tag, batch) run on their own tasks rather than the runtime loop. This means a click returns as soon as its own work finishes instead of waiting behind the current tick, and several actions can run in parallel. The shared simulation state is held behind a lock that is only taken for brief reads and commits — never across a network call — and the same `concurrency` limit bounds how many connections are open at once.
 

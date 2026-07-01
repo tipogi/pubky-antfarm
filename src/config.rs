@@ -147,6 +147,8 @@ pub struct AntfarmConfig {
     #[serde(default)]
     pub postgres: PostgresConfig,
     #[serde(default)]
+    pub main_homeserver: MainHomeserverConfig,
+    #[serde(default)]
     pub homeservers: Vec<HomeserverEntry>,
     #[serde(default)]
     pub simulator: SimulatorConfig,
@@ -176,10 +178,30 @@ impl Default for PostgresConfig {
     }
 }
 
+#[derive(Clone, Copy, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HomeserverInitialState {
+    #[default]
+    Active,
+    Dormant,
+}
+
+#[derive(Deserialize, Clone, Default)]
+pub struct MainHomeserverConfig {
+    #[serde(default)]
+    pub state: HomeserverInitialState,
+    #[serde(default)]
+    pub island: bool,
+}
+
 #[derive(Deserialize, Clone)]
 pub struct HomeserverEntry {
     pub label: String,
     pub seed: u8,
+    #[serde(default)]
+    pub state: HomeserverInitialState,
+    #[serde(default)]
+    pub island: bool,
 }
 
 impl HomeserverEntry {
@@ -255,14 +277,19 @@ impl Default for AntfarmConfig {
             dashboard_addr: Self::default_dashboard_addr(),
             dashboard_enabled: true,
             postgres: PostgresConfig::default(),
+            main_homeserver: MainHomeserverConfig::default(),
             homeservers: vec![
                 HomeserverEntry {
                     label: "hs2".into(),
                     seed: 1,
+                    state: HomeserverInitialState::Active,
+                    island: false,
                 },
                 HomeserverEntry {
                     label: "hs3".into(),
                     seed: 2,
+                    state: HomeserverInitialState::Active,
+                    island: false,
                 },
             ],
             simulator: SimulatorConfig::default(),

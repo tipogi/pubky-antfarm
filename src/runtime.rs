@@ -103,7 +103,9 @@ impl Runtime {
         db::setup_databases(config.postgres_url(), &db_labels).await?;
 
         let mut testnet = testnet::start(&config).await?;
-        let homeservers = homeservers::start_all(&mut testnet, &config).await?;
+        let startup = homeservers::start_all(&mut testnet, &config).await?;
+        let homeservers = startup.active;
+        let dormant = startup.dormant;
 
         db::list_databases(config.postgres_url()).await?;
 
@@ -126,7 +128,6 @@ impl Runtime {
             .build()?;
         let sdk = Pubky::with_client(client);
 
-        let dormant = HashMap::new();
         let registry: RegistryHandle = Arc::new(RwLock::new(simulator::Registry::new(
             social::UserKeys::new(config.user_index_start()),
             Vec::new(),
@@ -177,11 +178,11 @@ impl Runtime {
         }
 
         let simulate = !listen_only;
+        self.sync_islands().await;
 
         if simulate {
             println!("\n{}", "▸ Writing test data".cyan().bold());
             self.bootstrap_initial_users().await?;
-            self.sync_islands().await;
             self.publish_state().await;
         } else {
             println!(
@@ -557,10 +558,6 @@ impl Runtime {
     }
 
     fn handle_seed(&mut self, index: u8) -> anyhow::Result<control::Reply> {
-        if index == 0 {
-            anyhow::bail!("hs1 is always active");
-        }
-
         let label = Self::label_for(index);
 
         if self.is_active(&label) {
@@ -589,10 +586,6 @@ impl Runtime {
     }
 
     fn handle_stop(&mut self, index: u8) -> anyhow::Result<control::Reply> {
-        if index == 0 {
-            anyhow::bail!("cannot stop hs1 (the built-in homeserver)");
-        }
-
         let label = Self::label_for(index);
 
         let pos = self

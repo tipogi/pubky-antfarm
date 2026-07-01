@@ -10,7 +10,7 @@ pub async fn run(addr: &str, action: &HomeserverAction) -> anyhow::Result<()> {
         HomeserverAction::Stop { index } => ("stop", *index),
     };
 
-    if index == 0 {
+    if matches!(action, HomeserverAction::Create { .. }) && index == 0 {
         anyhow::bail!("index 0 is reserved for hs1 (the built-in homeserver)");
     }
 
