@@ -13,6 +13,12 @@ use crate::simulator::Registry;
 pub const BOOTSTRAP_ADDR: &str = "localhost:6881";
 /// Pkarr relay URL (StaticTestnet default).
 pub const PKARR_RELAY_URL: &str = "http://localhost:15411";
+/// HTTP relay URL (StaticTestnet default).
+pub const HTTP_RELAY_URL: &str = "http://localhost:15412";
+/// HTTP relay inbox base URL (current auth relay channel).
+pub const HTTP_RELAY_INBOX_URL: &str = "http://localhost:15412/inbox";
+/// HTTP relay link base URL (legacy auth relay channel).
+pub const HTTP_RELAY_LINK_URL: &str = "http://localhost:15412/link";
 
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -79,6 +85,9 @@ impl HomeserverInfo {
 pub struct NetworkInfo {
     pub bootstrap: String,
     pub pkarr_relay: String,
+    pub http_relay: String,
+    pub http_relay_inbox: String,
+    pub http_relay_link: String,
 }
 
 impl Default for NetworkInfo {
@@ -86,6 +95,9 @@ impl Default for NetworkInfo {
         Self {
             bootstrap: BOOTSTRAP_ADDR.to_string(),
             pkarr_relay: PKARR_RELAY_URL.to_string(),
+            http_relay: HTTP_RELAY_URL.to_string(),
+            http_relay_inbox: HTTP_RELAY_INBOX_URL.to_string(),
+            http_relay_link: HTTP_RELAY_LINK_URL.to_string(),
         }
     }
 }

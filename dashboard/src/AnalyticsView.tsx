@@ -421,6 +421,30 @@ function ConfigPanel({
                 </a>
               </dd>
             </div>
+            <div>
+              <dt>HTTP relay</dt>
+              <dd>
+                <a href={network.httpRelay} target="_blank" rel="noreferrer">
+                  {network.httpRelay}
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>Inbox</dt>
+              <dd>
+                <a href={network.httpRelayInbox} target="_blank" rel="noreferrer">
+                  {network.httpRelayInbox}
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>Link (legacy)</dt>
+              <dd>
+                <a href={network.httpRelayLink} target="_blank" rel="noreferrer">
+                  {network.httpRelayLink}
+                </a>
+              </dd>
+            </div>
           </dl>
         </div>
 

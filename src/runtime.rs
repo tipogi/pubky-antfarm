@@ -116,6 +116,22 @@ impl Runtime {
             "Pkarr relay:".white().bold(),
             web::PKARR_RELAY_URL.underline()
         );
+        println!(
+            "  {}  {}",
+            "HTTP relay:".white().bold(),
+            web::HTTP_RELAY_URL.underline()
+        );
+        println!(
+            "    {}     {}",
+            "Inbox:".dimmed(),
+            web::HTTP_RELAY_INBOX_URL.underline()
+        );
+        println!(
+            "    {}      {} {}",
+            "Link:".dimmed(),
+            web::HTTP_RELAY_LINK_URL.underline(),
+            "(legacy)".dimmed()
+        );
 
         // Without a request timeout the underlying reqwest client waits forever
         // on a stalled response. A single hung request would pin a tick op (and

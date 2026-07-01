@@ -30,6 +30,9 @@ export interface Homeserver {
 export interface NetworkInfo {
   bootstrap: string;
   pkarrRelay: string;
+  httpRelay: string;
+  httpRelayInbox: string;
+  httpRelayLink: string;
 }
 
 export type Range = [number, number];

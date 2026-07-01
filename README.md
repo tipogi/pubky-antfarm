@@ -207,6 +207,9 @@ Each homeserver publishes a pkarr `SignedPacket` to the DHT so any client can di
 |-----------|---------|----------|
 | DHT bootstrap | `localhost:6881` | UDP (Mainline DHT) |
 | Pkarr relay | `http://localhost:15411` | HTTP |
+| HTTP relay | `http://localhost:15412` | HTTP auth relay |
+| HTTP relay inbox | `http://localhost:15412/inbox` | Store-and-forward auth channel |
+| HTTP relay link | `http://localhost:15412/link` | Legacy synchronous auth channel |
 | Admin socket | `127.0.0.1:6300` | TCP (JSON-line) |
 | Dashboard (UI + API) | `http://127.0.0.1:6400` | SPA + HTTP + SSE |
 | hs1 HTTP | `http://localhost:6286` | HTTP (fixed) |
