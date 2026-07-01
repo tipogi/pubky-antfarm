@@ -33,6 +33,7 @@ struct AppState {
 /// - `GET  /api/activity` — SSE stream of per-tick simulator deltas
 /// - `POST /api/homeserver/{create,seed,stop}` — control a homeserver
 /// - `POST /api/user` — create a user on a homeserver
+/// - `POST /api/user/change-homeserver` — re-register a user on a homeserver
 /// - `POST /api/follow` — user follows a target pubky
 /// - `POST /api/tag` — user tags a target URI with a label
 /// - `POST /api/batch` — create many posts and/or tags at once
@@ -59,6 +60,7 @@ pub async fn serve(
         .route("/api/homeserver/:seed/users/storage", get(user_storage))
         .route("/api/user/:index/keys", get(user_keys))
         .route("/api/user", post(create_user))
+        .route("/api/user/change-homeserver", post(change_user_homeserver))
         .route("/api/follow", post(create_follow))
         .route("/api/tag", post(create_tag))
         .route("/api/batch", post(create_batch))
@@ -94,9 +96,7 @@ async fn snapshot(State(app): State<AppState>) -> Json<DashboardState> {
     Json(app.state.borrow().clone())
 }
 
-async fn events(
-    State(app): State<AppState>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+async fn events(State(app): State<AppState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = app.state;
     let stream = async_stream::stream! {
         // Emit the current state immediately on connect, then on every change.
@@ -168,6 +168,13 @@ struct UserReq {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ChangeHomeserverReq {
+    user_index: usize,
+    target_seed: u8,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FollowReq {
     from: usize,
     target: String,
@@ -206,84 +213,92 @@ async fn create_homeserver(
     State(app): State<AppState>,
     Json(req): Json<CreateReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(
-        &app.ctrl_tx,
-        control::Action::Create,
-        None,
-        Some(req.index),
-        false,
-        None,
-        None,
-        None,
-        0,
-        0,
-        Some(req.island),
-        None,
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Create,
+            None,
+            Some(req.index),
+            false,
+            None,
+            None,
+            None,
+            0,
+            0,
+            Some(req.island),
+            None,
+        )
+        .await,
     )
-    .await)
 }
 
 async fn set_island(
     State(app): State<AppState>,
     Json(req): Json<IslandReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(
-        &app.ctrl_tx,
-        control::Action::Island,
-        None,
-        Some(req.index),
-        false,
-        None,
-        None,
-        None,
-        0,
-        0,
-        Some(req.island),
-        None,
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Island,
+            None,
+            Some(req.index),
+            false,
+            None,
+            None,
+            None,
+            0,
+            0,
+            Some(req.island),
+            None,
+        )
+        .await,
     )
-    .await)
 }
 
 async fn seed_homeserver(
     State(app): State<AppState>,
     Json(req): Json<IndexReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(
-        &app.ctrl_tx,
-        control::Action::Seed,
-        None,
-        Some(req.index),
-        false,
-        None,
-        None,
-        None,
-        0,
-        0,
-        None,
-        None,
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Seed,
+            None,
+            Some(req.index),
+            false,
+            None,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
+        )
+        .await,
     )
-    .await)
 }
 
 async fn stop_homeserver(
     State(app): State<AppState>,
     Json(req): Json<IndexReq>,
 ) -> Json<control::Response> {
-    Json(send_cmd(
-        &app.ctrl_tx,
-        control::Action::Stop,
-        None,
-        Some(req.index),
-        false,
-        None,
-        None,
-        None,
-        0,
-        0,
-        None,
-        None,
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Stop,
+            None,
+            Some(req.index),
+            false,
+            None,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
+        )
+        .await,
     )
-    .await)
 }
 
 async fn user_storage(
@@ -301,9 +316,7 @@ async fn user_storage(
             hs.users.clone(),
         )
     };
-    Json(
-        storage::fetch_users_storage(&database_url, configured_quota_mb, &users).await,
-    )
+    Json(storage::fetch_users_storage(&database_url, configured_quota_mb, &users).await)
 }
 
 #[derive(Serialize)]
@@ -338,6 +351,29 @@ async fn create_user(
             req.index,
             req.profile,
             None,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
+        )
+        .await,
+    )
+}
+
+async fn change_user_homeserver(
+    State(app): State<AppState>,
+    Json(req): Json<ChangeHomeserverReq>,
+) -> Json<control::Response> {
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::ChangeHomeserver,
+            Some(req.target_seed),
+            None,
+            false,
+            Some(req.user_index),
             None,
             None,
             0,

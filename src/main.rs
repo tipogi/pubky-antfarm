@@ -23,9 +23,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Command::List) => commands::list::run(&cli.config).await,
         Some(Command::Seed { ref action }) => commands::seed::run(action).await,
-        Some(Command::Homeserver { ref addr, ref action }) => {
-            commands::homeserver::run(addr, action).await
-        }
+        Some(Command::Homeserver {
+            ref addr,
+            ref action,
+        }) => commands::homeserver::run(addr, action).await,
         None => {
             runtime::Runtime::new(&cli.config)
                 .await?

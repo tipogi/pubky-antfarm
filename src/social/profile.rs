@@ -13,7 +13,7 @@ pub(crate) async fn signup(
 ) -> anyhow::Result<(PublicKey, SessionStorage)> {
     let signer = sdk.signer(keypair);
     let user_pk = signer.public_key();
-    let session = signer.signup(hs_pk, None).await?;
+    let session = signer.signup_cookie(hs_pk, None).await?;
     println!(
         "  {} signed up user {}",
         "[signup]".magenta().bold(),

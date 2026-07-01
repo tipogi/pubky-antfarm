@@ -3,10 +3,10 @@ use std::io::Write;
 
 use anyhow::Context;
 use colored::Colorize;
-use pubky_testnet::pubky::{Keypair, PubkyHttpClient, Pubky, PublicKey};
+use pubky_testnet::pubky::{Keypair, Pubky, PubkyHttpClient, PublicKey};
 
-use crate::config::AntfarmConfig;
 use super::keygen::keypair_from_index;
+use crate::config::AntfarmConfig;
 
 const SPINNER: &[&str] = &["◰", "◳", "◲", "◱"];
 
@@ -42,7 +42,14 @@ pub async fn run(config_path: &str) -> anyhow::Result<()> {
             format!("hs{}", seed + 1)
         };
         let z32 = pk.z32();
-        hs_map.insert(z32.clone(), Homeserver { label, public_key: z32, users: Vec::new() });
+        hs_map.insert(
+            z32.clone(),
+            Homeserver {
+                label,
+                public_key: z32,
+                users: Vec::new(),
+            },
+        );
     }
 
     let user_index_start = config.user_index_start();
@@ -63,7 +70,10 @@ pub async fn run(config_path: &str) -> anyhow::Result<()> {
             Some(hs_pk) => {
                 let hs_z32 = hs_pk.z32();
                 if let Some(hs) = hs_map.get_mut(&hs_z32) {
-                    hs.users.push(User { index, public_key: user_pk });
+                    hs.users.push(User {
+                        index,
+                        public_key: user_pk,
+                    });
                 } else {
                     eprintln!(
                         "\r  {} user {} is on unknown homeserver {}",
@@ -91,7 +101,10 @@ pub async fn run(config_path: &str) -> anyhow::Result<()> {
         index - 1
     );
 
-    let mut ordered: Vec<_> = hs_map.into_values().filter(|hs| !hs.users.is_empty()).collect();
+    let mut ordered: Vec<_> = hs_map
+        .into_values()
+        .filter(|hs| !hs.users.is_empty())
+        .collect();
     ordered.sort_by(|a, b| a.label.cmp(&b.label));
 
     for hs in &ordered {

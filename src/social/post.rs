@@ -10,12 +10,12 @@ use super::common::{self, Writable};
 use super::UserSession;
 
 const WORDS: &[&str] = &[
-    "hello", "world", "pubky", "rust", "async", "token", "node", "swarm", "hash", "key",
-    "data", "sync", "peer", "link", "feed", "post", "user", "tag", "event", "stream",
-    "block", "chain", "relay", "store", "cache", "query", "index", "table", "graph", "edge",
-    "cloud", "local", "test", "debug", "build", "start", "stop", "run", "loop", "tick",
-    "alpha", "beta", "gamma", "delta", "sigma", "omega", "proxy", "route", "layer", "stack",
-    "fast", "cool", "nice", "bold", "free", "open", "safe", "deep", "wide", "new",
+    "hello", "world", "pubky", "rust", "async", "token", "node", "swarm", "hash", "key", "data",
+    "sync", "peer", "link", "feed", "post", "user", "tag", "event", "stream", "block", "chain",
+    "relay", "store", "cache", "query", "index", "table", "graph", "edge", "cloud", "local",
+    "test", "debug", "build", "start", "stop", "run", "loop", "tick", "alpha", "beta", "gamma",
+    "delta", "sigma", "omega", "proxy", "route", "layer", "stack", "fast", "cool", "nice", "bold",
+    "free", "open", "safe", "deep", "wide", "new",
 ];
 
 pub(crate) fn random_content() -> String {

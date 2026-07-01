@@ -10,7 +10,8 @@ pub async fn start(config: &AntfarmConfig) -> anyhow::Result<StaticTestnet> {
     println!("\n{}", "▸ Starting testnet".cyan().bold());
 
     let mut hs_config = ConfigToml::default_test_config();
-    hs_config.general.user_storage_quota_mb = config.user_storage_quota_mb;
+    hs_config.storage.default_quota_mb =
+        (config.user_storage_quota_mb > 0).then_some(config.user_storage_quota_mb);
     let hs1_db = crate::db::connection_string(config.postgres_url(), "hs1");
     hs_config.general.database_url = ConnectionString::new(&hs1_db)?;
 

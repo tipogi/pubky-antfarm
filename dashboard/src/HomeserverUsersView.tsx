@@ -205,6 +205,15 @@ function PkarrActionIcon() {
   return <PkarrRecordIcon className="hs-user-action-icon" />;
 }
 
+function HomeserverActionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="hs-user-action-icon" aria-hidden="true">
+      <path d="M7 7h13m0 0-4-4m4 4-4 4" />
+      <path d="M17 17H4m0 0 4 4m-4-4 4-4" />
+    </svg>
+  );
+}
+
 function UserActionButtons({
   disabled,
   onFollow,
@@ -213,6 +222,7 @@ function UserActionButtons({
   onBatch,
   onEvents,
   onPkarr,
+  onHomeserver,
   onDetails,
 }: {
   disabled: boolean;
@@ -222,6 +232,7 @@ function UserActionButtons({
   onBatch: () => void;
   onEvents: () => void;
   onPkarr: () => void;
+  onHomeserver: () => void;
   onDetails: () => void;
 }) {
   return (
@@ -297,6 +308,18 @@ function UserActionButtons({
           <PkarrActionIcon />
         </span>
         <span className="hs-user-action-label">Pkarr</span>
+      </button>
+      <button
+        type="button"
+        className="hs-user-action-trigger"
+        disabled={disabled}
+        onClick={onHomeserver}
+        title="Change homeserver"
+      >
+        <span className="hs-user-action-glyph">
+          <HomeserverActionIcon />
+        </span>
+        <span className="hs-user-action-label">Homeserver</span>
       </button>
       <button
         type="button"
@@ -441,14 +464,145 @@ function UserActionModal({
   );
 }
 
+function ChangeHomeserverModal({
+  label,
+  kindLabel,
+  userIndex,
+  currentSeed,
+  homeservers,
+  busy,
+  onClose,
+  onAction,
+}: {
+  label: string;
+  kindLabel: string;
+  userIndex: number;
+  currentSeed: number;
+  homeservers: Homeserver[];
+  busy: boolean;
+  onClose: () => void;
+  onAction: RunAction;
+}) {
+  const targetHomeservers = useMemo(
+    () =>
+      homeservers
+        .filter((target) => !target.pending && target.seed !== currentSeed)
+        .sort((a, b) => a.seed - b.seed),
+    [currentSeed, homeservers]
+  );
+  const [targetSeed, setTargetSeed] = useState<number | null>(
+    targetHomeservers[0]?.seed ?? null
+  );
+
+  useEffect(() => {
+    setTargetSeed((current) =>
+      current != null && targetHomeservers.some((target) => target.seed === current)
+        ? current
+        : targetHomeservers[0]?.seed ?? null
+    );
+  }, [targetHomeservers]);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (targetSeed == null || targetHomeservers.length === 0) return;
+
+    const target = targetHomeservers.find((item) => item.seed === targetSeed);
+    onAction(
+      async () => {
+        const res = await api.changeHomeserver(userIndex, targetSeed);
+        if (res.ok) onClose();
+        return res;
+      },
+      `Changing ${label} to ${target?.label ?? `hs${targetSeed + 1}`}…`
+    );
+  };
+
+  return (
+    <div className="hs-action-modal-overlay" onClick={onClose}>
+      <div
+        className="hs-action-modal hs-change-hs-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="change-hs-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="hs-action-modal-head">
+          <div>
+            <h2 id="change-hs-modal-title">Change homeserver</h2>
+            <p className="hs-action-modal-sub">
+              {kindLabel} · {label}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="close-btn"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <form className="hs-action-modal-form" onSubmit={submit}>
+          <label className="hs-action-modal-field">
+            <span className="hs-action-modal-label">Target homeserver</span>
+            <select
+              className="hs-action-modal-input hs-pkarr-change-select"
+              value={targetSeed ?? ""}
+              disabled={busy || targetHomeservers.length === 0}
+              onChange={(e) => setTargetSeed(Number(e.target.value))}
+              aria-label="Target homeserver"
+              autoFocus
+            >
+              {targetHomeservers.length === 0 ? (
+                <option value="">No other homeservers</option>
+              ) : (
+                targetHomeservers.map((target) => (
+                  <option key={target.seed} value={target.seed}>
+                    {target.label} (seed {target.seed})
+                  </option>
+                ))
+              )}
+            </select>
+            <span className="hs-action-modal-help">
+              Updates this user&apos;s pkarr record only. Existing data stays on the
+              previous homeserver.
+            </span>
+          </label>
+
+          <div className="hs-action-modal-foot">
+            <button
+              type="button"
+              className="action"
+              disabled={busy}
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="action primary"
+              disabled={busy || targetSeed == null || targetHomeservers.length === 0}
+            >
+              Change homeserver
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function HomeserverUsersView({
   hs,
+  homeservers,
   pkarrRelay,
   busy,
   onAction,
   onCopyKey,
 }: {
   hs: Homeserver;
+  homeservers: Homeserver[];
   pkarrRelay: string;
   busy: boolean;
   onAction: RunAction;
@@ -461,6 +615,11 @@ export function HomeserverUsersView({
     label: string;
     kindLabel: string;
     publicKey: string;
+  } | null>(null);
+  const [homeserverModal, setHomeserverModal] = useState<{
+    label: string;
+    kindLabel: string;
+    userIndex: number;
   } | null>(null);
   const [eventsModal, setEventsModal] = useState<{
     label: string;
@@ -560,6 +719,14 @@ export function HomeserverUsersView({
       label: displayName,
       kindLabel: `User #${userIndex} · ${hs.label}`,
       publicKey,
+    });
+  };
+
+  const openHomeserverModal = (userIndex: number, displayName: string) => {
+    setHomeserverModal({
+      label: displayName,
+      kindLabel: `User #${userIndex} · ${hs.label}`,
+      userIndex,
     });
   };
 
@@ -706,6 +873,9 @@ export function HomeserverUsersView({
                           onPkarr={() =>
                             openPkarrModal(user.index, displayName, user.publicKey)
                           }
+                          onHomeserver={() =>
+                            openHomeserverModal(user.index, displayName)
+                          }
                           onDetails={() =>
                             openDetailsModal(user.index, displayName, user.publicKey)
                           }
@@ -761,6 +931,19 @@ export function HomeserverUsersView({
           publicKey={pkarrModal.publicKey}
           pkarrRelay={pkarrRelay}
           onClose={() => setPkarrModal(null)}
+        />
+      )}
+
+      {homeserverModal && (
+        <ChangeHomeserverModal
+          label={homeserverModal.label}
+          kindLabel={homeserverModal.kindLabel}
+          userIndex={homeserverModal.userIndex}
+          currentSeed={hs.seed}
+          homeservers={homeservers}
+          busy={busy}
+          onClose={() => setHomeserverModal(null)}
+          onAction={onAction}
         />
       )}
 

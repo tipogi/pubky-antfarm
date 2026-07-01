@@ -8,6 +8,8 @@ max_homeservers = 24   # also the starting index for user keys
 [postgres]
 url = "postgres://antfarm_user:antfarm_pass@localhost:5432/antfarm?pubky-test=true"
 
+# The 'seed' field determines the homeserver's cryptographic keypair. For each homeserver, the value is expanded to a 32-byte array
+# with all elements set to the seed value (e.g., [1; 32] for seed=1), producing deterministic and reproducible keys for each run.
 [[homeservers]]
 label = "hs2"
 seed = 1    # expands to [1; 32]
@@ -18,7 +20,7 @@ seed = 2    # expands to [2; 32]
 
 [simulator]
 interval_secs = 20
-# max_users_per_homeserver = 100   # cap users per homeserver (0 = unlimited); overflow becomes extra events
+max_users_per_homeserver = 10   # cap users per homeserver (0 = unlimited); overflow becomes extra events
 users_per_tick = [0, 5]
 posts_per_tick = [0, 10]
 tags_per_tick = [0, 10]

@@ -9,9 +9,31 @@ export interface PkarrRecordResult {
   error?: string;
 }
 
+const PKARR_RESOLVE_TIMEOUT_MS = 10_000;
+
 async function createClient(pkarrRelay: string) {
   const { Client } = await import("@synonymdev/pkarr");
   return new Client([pkarrRelay], 8000);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error(`Pkarr resolution timed out after ${timeoutMs / 1000}s`)),
+      timeoutMs
+    );
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
 }
 
 /**
@@ -22,10 +44,13 @@ export async function loadPkarrRecord(
   pkarrRelay: string
 ): Promise<PkarrRecordResult> {
   const relay = pkarrRelay.replace(/\/$/, "");
-  const client = await createClient(relay);
 
   try {
-    const packet = await client.resolveMostRecent(publicKey);
+    const client = await createClient(relay);
+    const packet = await withTimeout(
+      client.resolveMostRecent(publicKey),
+      PKARR_RESOLVE_TIMEOUT_MS
+    );
     if (!packet) {
       return {
         ok: false,

@@ -180,11 +180,14 @@ impl DashboardState {
         if let Some(reg) = registry {
             for (index, pk) in reg.user_keys.all() {
                 if let Some(label) = reg.assignments.get(&index) {
-                    users_by_hs.entry(label.clone()).or_default().push(UserInfo {
-                        index,
-                        name: crate::social::user_name(index),
-                        public_key: pk.z32(),
-                    });
+                    users_by_hs
+                        .entry(label.clone())
+                        .or_default()
+                        .push(UserInfo {
+                            index,
+                            name: crate::social::user_name(index),
+                            public_key: pk.z32(),
+                        });
                 }
             }
             for users in users_by_hs.values_mut() {
@@ -196,7 +199,9 @@ impl DashboardState {
 
         let mut homeservers: Vec<HomeserverInfo> = active
             .iter()
-            .map(|hs| HomeserverInfo::from_homeserver(hs, HomeserverStatus::Active, take(&hs.label)))
+            .map(|hs| {
+                HomeserverInfo::from_homeserver(hs, HomeserverStatus::Active, take(&hs.label))
+            })
             .chain(dormant.values().map(|hs| {
                 HomeserverInfo::from_homeserver(hs, HomeserverStatus::Dormant, take(&hs.label))
             }))

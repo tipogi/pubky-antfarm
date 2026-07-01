@@ -13,18 +13,18 @@ use colored::Colorize;
 use futures_util::StreamExt;
 use pubky_testnet::pubky::{Pubky, PublicKey};
 
-pub use identity::UserKeys;
-pub(crate) use identity::user_name;
-pub(crate) use session::{SessionCache, UserSession};
 pub(crate) use follow::create as create_follow;
+pub(crate) use identity::user_name;
+pub use identity::UserKeys;
 pub(crate) use mention::create as create_mention;
 pub(crate) use post::create as create_post;
 pub(crate) use post::random_content;
-pub(crate) use social_post::create as create_social_post;
-pub(crate) use social_post::Variant as SocialPostVariant;
 pub(crate) use profile::signup;
 pub(crate) use profile::signup_and_write;
 pub(crate) use profile::write_profile;
+pub(crate) use session::{SessionCache, UserSession};
+pub(crate) use social_post::create as create_social_post;
+pub(crate) use social_post::Variant as SocialPostVariant;
 pub(crate) use tag::create as create_tag;
 pub(crate) use tag::create_for_app as create_tag_for_app;
 pub(crate) use tag::random_label as random_tag_label;
@@ -55,10 +55,7 @@ pub(crate) fn normalize_tag_target(target: &str) -> anyhow::Result<String> {
     if trimmed.contains("://") || trimmed.contains('/') {
         anyhow::bail!("target must be a pubky key, not a URI");
     }
-    Ok(format!(
-        "pubky://{}/pub/pubky.app/profile.json",
-        trimmed
-    ))
+    Ok(format!("pubky://{}/pub/pubky.app/profile.json", trimmed))
 }
 
 // TODO: Might be deleted
@@ -67,19 +64,14 @@ pub async fn read_events(sdk: &Pubky, label: &str, user_pk: &PublicKey, hs_pk: &
     let hs_z32 = hs_pk.z32();
 
     let stream = match sdk
-        .event_stream()
-        .add_user(user_pk, None)
-        .map(|b| b.limit(50))
+        .event_stream_for_user(user_pk, None)
+        .limit(50)
+        .subscribe()
+        .await
     {
-        Ok(builder) => match builder.subscribe().await {
-            Ok(s) => s,
-            Err(e) => {
-                println!("  {tag} {} {e}", "error subscribing:".red());
-                return;
-            }
-        },
+        Ok(s) => s,
         Err(e) => {
-            println!("  {tag} {} {e}", "error building stream:".red());
+            println!("  {tag} {} {e}", "error subscribing:".red());
             return;
         }
     };

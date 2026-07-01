@@ -26,9 +26,9 @@ pub async fn send_user(
 }
 
 async fn send_raw(addr: &str, payload: &serde_json::Value) -> anyhow::Result<Response> {
-    let stream = TcpStream::connect(addr).await.map_err(|e| {
-        anyhow::anyhow!("could not connect to antfarm at {addr}: {e}")
-    })?;
+    let stream = TcpStream::connect(addr)
+        .await
+        .map_err(|e| anyhow::anyhow!("could not connect to antfarm at {addr}: {e}"))?;
 
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);

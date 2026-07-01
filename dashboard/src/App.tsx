@@ -251,6 +251,7 @@ export default function App() {
               {detailHs ? (
                 <HomeserverUsersView
                   hs={resolveHs(detailHs)}
+                  homeservers={homeservers}
                   pkarrRelay={state.network.pkarrRelay}
                   busy={busy}
                   onAction={runAction}

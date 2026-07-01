@@ -1,4 +1,8 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+} from "react";
 import { loadPkarrRecord, type PkarrRecordResult } from "./pkarr";
 import {
   formatRecordValue,
@@ -40,12 +44,26 @@ export function PkarrRecordModal({
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setRecord(null);
 
-    void loadPkarrRecord(publicKey, pkarrRelay).then((result) => {
-      if (cancelled) return;
-      setRecord(result);
-      setLoading(false);
-    });
+    void loadPkarrRecord(publicKey, pkarrRelay)
+      .then((result) => {
+        if (cancelled) return;
+        setRecord(result);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setRecord({
+          ok: false,
+          publicKey,
+          pkarrRelay: pkarrRelay.replace(/\/$/, ""),
+          error: e instanceof Error ? e.message : "Pkarr resolution failed",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;

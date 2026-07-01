@@ -9,8 +9,16 @@ use super::common::{self, Writable};
 use super::UserSession;
 
 const TAG_LABELS: &[&str] = &[
-    "cool", "interesting", "important", "funny", "relevant",
-    "useful", "trending", "favorite", "bookmark", "recommend",
+    "cool",
+    "interesting",
+    "important",
+    "funny",
+    "relevant",
+    "useful",
+    "trending",
+    "favorite",
+    "bookmark",
+    "recommend",
 ];
 
 pub(crate) fn random_label() -> &'static str {

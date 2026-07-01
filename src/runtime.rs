@@ -198,7 +198,11 @@ impl Runtime {
         let mut tick_num: u64 = 0;
 
         if simulate {
-            println!("\n{} (every {}s)", "▸ Simulator running".cyan().bold(), secs);
+            println!(
+                "\n{} (every {}s)",
+                "▸ Simulator running".cyan().bold(),
+                secs
+            );
         }
 
         // Local clone so the publish arm doesn't borrow `self` inside select!.
@@ -249,6 +253,7 @@ impl Runtime {
                 self.publish_state().await;
             }
             control::Action::User
+            | control::Action::ChangeHomeserver
             | control::Action::Follow
             | control::Action::Tag
             | control::Action::Batch
@@ -300,6 +305,12 @@ impl Runtime {
         } else {
             None
         };
+        let change_target_hs = if matches!(cmd.action, control::Action::ChangeHomeserver) {
+            let hs_index = cmd.hs.unwrap_or(0);
+            Some((hs_index, self.lookup_hs(hs_index)))
+        } else {
+            None
+        };
 
         tokio::spawn(async move {
             let reply: anyhow::Result<control::Reply> = match cmd.action {
@@ -324,6 +335,29 @@ impl Runtime {
                         cmd.hs.unwrap_or(0) + 1
                     )),
                 },
+                control::Action::ChangeHomeserver => {
+                    match (cmd.from, change_target_hs.expect("resolved for ChangeHomeserver")) {
+                        (Some(user_index), (_, Some((target_label, target_hs_pk)))) => {
+                            run_change_homeserver_cmd(
+                                &sdk,
+                                &sessions,
+                                &registry,
+                                &limiter,
+                                user_index,
+                                target_label,
+                                target_hs_pk,
+                            )
+                            .await
+                        }
+                        (Some(_), (hs_index, None)) => Err(anyhow::anyhow!(
+                            "homeserver hs{} not found (neither active nor dormant) — create it first",
+                            hs_index + 1
+                        )),
+                        (None, _) => Err(anyhow::anyhow!(
+                            "change homeserver requires user index"
+                        )),
+                    }
+                }
                 control::Action::Follow => match (cmd.from, cmd.target) {
                     (Some(from), Some(target)) => {
                         run_follow_cmd(&sdk, &sessions, &registry, &limiter, from, target).await
@@ -358,15 +392,8 @@ impl Runtime {
                 },
                 control::Action::SocialPost => match cmd.social_post {
                     Some(payload) => {
-                        run_social_post_cmd(
-                            &sdk,
-                            &sessions,
-                            &registry,
-                            &totals,
-                            &limiter,
-                            payload,
-                        )
-                        .await
+                        run_social_post_cmd(&sdk, &sessions, &registry, &totals, &limiter, payload)
+                            .await
                     }
                     None => Err(anyhow::anyhow!("social post payload required")),
                 },
@@ -610,9 +637,15 @@ impl Runtime {
         hs.island = island;
 
         let (glyph, state) = if island {
-            ("🏝".to_string(), "island enabled — users can no longer be referenced")
+            (
+                "🏝".to_string(),
+                "island enabled — users can no longer be referenced",
+            )
         } else {
-            ("🌐".to_string(), "island disabled — users can be referenced again")
+            (
+                "🌐".to_string(),
+                "island disabled — users can be referenced again",
+            )
         };
         println!("  {} {} {}", glyph, label.white().bold(), state.dimmed());
 
@@ -650,18 +683,17 @@ impl Runtime {
         reg.dormant = dormant;
     }
 
-    /// Resolve a homeserver index to its label + public key, searching active
+    /// Resolve a homeserver seed to its label + public key, searching active
     /// then dormant.
     fn lookup_hs(&self, hs_index: u8) -> Option<(String, PublicKey)> {
-        let label = Self::label_for(hs_index);
         self.homeservers
             .iter()
-            .find(|hs| hs.label == label)
+            .find(|hs| hs.seed == hs_index)
             .map(|hs| (hs.label.clone(), hs.public_key.clone()))
             .or_else(|| {
                 self.dormant
                     .get(&hs_index)
-                    .map(|hs| (label.clone(), hs.public_key.clone()))
+                    .map(|hs| (hs.label.clone(), hs.public_key.clone()))
             })
     }
 
@@ -717,7 +749,9 @@ async fn run_user_cmd(
             }
             None if auto_assign => reg.user_keys.create_next(),
             None => {
-                anyhow::bail!("--index is required in listen-only mode (no registry to auto-assign)")
+                anyhow::bail!(
+                    "--index is required in listen-only mode (no registry to auto-assign)"
+                )
             }
         };
         // Reserve the slot under the lock; sign up below without holding it.
@@ -751,12 +785,73 @@ async fn run_user_cmd(
         reg.assign(index, label.clone());
     }
 
-    let action = if profile { "with profile" } else { "signup only" };
+    let action = if profile {
+        "with profile"
+    } else {
+        "signup only"
+    };
     Ok(control::Reply::Ok {
         label,
         public_key: Some(user_pk.z32()),
         http_url: None,
         message: format!("user {index} created ({action})"),
+    })
+}
+
+async fn run_change_homeserver_cmd(
+    sdk: &Pubky,
+    sessions: &social::SessionCache,
+    registry: &RegistryHandle,
+    limiter: &Arc<Semaphore>,
+    user_index: usize,
+    target_label: String,
+    target_hs_pk: PublicKey,
+) -> anyhow::Result<control::Reply> {
+    let _permit = limiter.acquire().await.expect("limiter never closed");
+
+    {
+        let reg = registry.read().await;
+        let current_label = reg.assignments.get(&user_index).ok_or_else(|| {
+            anyhow::anyhow!("unknown user index {user_index} — create the user first")
+        })?;
+        if current_label == &target_label {
+            anyhow::bail!("user {user_index} is already registered on {target_label}");
+        }
+        if reg.user_keys.get_user(user_index).is_none() {
+            anyhow::bail!("unknown user key for index {user_index}");
+        }
+    }
+
+    let keypair = social::UserKeys::keypair_at(user_index);
+    let signer = sdk.signer(keypair);
+    let user_pk = signer.public_key();
+    let session = signer.signup_cookie(&target_hs_pk, None).await?;
+    // Be explicit about the operation this dashboard action represents: move
+    // the user PKARR pointer. Signup already force-publishes, but doing it here
+    // makes the migration intent independent from account creation semantics.
+    signer
+        .pkdns()
+        .publish_homeserver_force(Some(&target_hs_pk))
+        .await?;
+
+    sessions.insert(
+        user_index,
+        social::UserSession {
+            public_key: user_pk.clone(),
+            storage: session.storage(),
+        },
+    );
+    {
+        let mut reg = registry.write().await;
+        reg.user_keys.register_at(user_index, user_pk.clone());
+        reg.assign(user_index, target_label.clone());
+    }
+
+    Ok(control::Reply::Ok {
+        label: target_label.clone(),
+        public_key: Some(user_pk.z32()),
+        http_url: None,
+        message: format!("user {user_index} changed homeserver to {target_label}"),
     })
 }
 
@@ -864,20 +959,14 @@ async fn run_social_post_cmd(
     let mention_key = payload.mention_key.as_deref();
     let post_uri = payload.post_uri.as_deref();
 
-    let (author_pk, post_id) = match social::create_social_post(
-        &session,
-        variant,
-        mention_key,
-        post_uri,
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(e) => {
-            sessions.invalidate(author_index);
-            return Err(e);
-        }
-    };
+    let (author_pk, post_id) =
+        match social::create_social_post(&session, variant, mention_key, post_uri).await {
+            Ok(result) => result,
+            Err(e) => {
+                sessions.invalidate(author_index);
+                return Err(e);
+            }
+        };
 
     {
         let mut reg = registry.write().await;

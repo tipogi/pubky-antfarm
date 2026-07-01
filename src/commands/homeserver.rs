@@ -17,10 +17,7 @@ pub async fn run(addr: &str, action: &HomeserverAction) -> anyhow::Result<()> {
     let resp = match control::client::send(addr, action_str, index).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!(
-                "\n  {} {e}",
-                "✗".red().bold(),
-            );
+            eprintln!("\n  {} {e}", "✗".red().bold(),);
             eprintln!(
                 "  {} make sure antfarm is running: {}",
                 "→".cyan(),

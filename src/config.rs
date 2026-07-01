@@ -300,11 +300,11 @@ impl AntfarmConfig {
                 path.bold()
             );
             if default_exists {
+                eprintln!("  {} copy the default config to get started:", "→".cyan());
                 eprintln!(
-                    "  {} copy the default config to get started:",
-                    "→".cyan()
+                    "    {}\n",
+                    "cp config.default.toml config.toml".white().bold()
                 );
-                eprintln!("    {}\n", "cp config.default.toml config.toml".white().bold());
             } else {
                 eprintln!(
                     "  {} create a {} with your settings\n",
@@ -312,11 +312,11 @@ impl AntfarmConfig {
                     "config.toml".white().bold()
                 );
             }
+            eprintln!("  {} or specify a different path:", "→".cyan());
             eprintln!(
-                "  {} or specify a different path:",
-                "→".cyan()
+                "    {}\n",
+                "cargo run -- run --config path/to/config.toml".dimmed()
             );
-            eprintln!("    {}\n", "cargo run -- run --config path/to/config.toml".dimmed());
             std::process::exit(1);
         }
 

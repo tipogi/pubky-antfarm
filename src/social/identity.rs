@@ -4,29 +4,21 @@ use pubky_testnet::pubky::{Keypair, PublicKey};
 use rand::RngExt as _;
 
 const ADJECTIVES: &[&str] = &[
-    "swift", "bright", "silent", "frozen", "blazing",
-    "cosmic", "hidden", "rustic", "golden", "nimble",
-    "feral", "lucid", "primal", "rugged", "vivid",
-    "hollow", "molten", "serene", "wicked", "ancient",
-    "bitter", "daring", "gentle", "jagged", "mystic",
-    "roaming", "savage", "tender", "woven", "cryptic",
-    "dusty", "forked", "lunar", "nested", "orbital",
-    "parsed", "async", "static", "mutable", "native",
-    "atomic", "binary", "cached", "dense", "elastic",
+    "swift", "bright", "silent", "frozen", "blazing", "cosmic", "hidden", "rustic", "golden",
+    "nimble", "feral", "lucid", "primal", "rugged", "vivid", "hollow", "molten", "serene",
+    "wicked", "ancient", "bitter", "daring", "gentle", "jagged", "mystic", "roaming", "savage",
+    "tender", "woven", "cryptic", "dusty", "forked", "lunar", "nested", "orbital", "parsed",
+    "async", "static", "mutable", "native", "atomic", "binary", "cached", "dense", "elastic",
     "gifted", "hashed", "keen", "linked", "mapped",
 ];
 
 const NOUNS: &[&str] = &[
-    "river", "falcon", "summit", "kernel", "cipher",
-    "forest", "beacon", "glacier", "pebble", "canyon",
-    "temple", "harbor", "nebula", "meadow", "torrent",
-    "tundra", "marsh", "valley", "aurora", "comet",
-    "branch", "socket", "thread", "buffer", "vertex",
-    "module", "signal", "bridge", "cursor", "daemon",
-    "ledger", "shard", "block", "relay", "proxy",
-    "index", "token", "stack", "queue", "router",
-    "anchor", "spark", "pulse", "orbit", "storm",
-    "cedar", "flint", "coral", "ridge", "ember",
+    "river", "falcon", "summit", "kernel", "cipher", "forest", "beacon", "glacier", "pebble",
+    "canyon", "temple", "harbor", "nebula", "meadow", "torrent", "tundra", "marsh", "valley",
+    "aurora", "comet", "branch", "socket", "thread", "buffer", "vertex", "module", "signal",
+    "bridge", "cursor", "daemon", "ledger", "shard", "block", "relay", "proxy", "index", "token",
+    "stack", "queue", "router", "anchor", "spark", "pulse", "orbit", "storm", "cedar", "flint",
+    "coral", "ridge", "ember",
 ];
 
 /// Deterministic, stable handle for a user index so the same user always shows

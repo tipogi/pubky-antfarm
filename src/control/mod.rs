@@ -10,6 +10,8 @@ pub enum Action {
     Seed,
     Stop,
     User,
+    /// Re-register an existing deterministic user key on another homeserver.
+    ChangeHomeserver,
     Follow,
     Tag,
     Batch,

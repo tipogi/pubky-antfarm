@@ -1,10 +1,10 @@
 use anyhow::Context;
 use colored::Colorize;
-use pubky_testnet::pubky::{PubkyHttpClient, Pubky};
+use pubky_testnet::pubky::{Pubky, PubkyHttpClient};
 
+use super::keygen::keypair_from_index;
 use crate::config::SeedAction;
 use crate::social;
-use super::keygen::keypair_from_index;
 
 fn connect_to_testnet() -> anyhow::Result<Pubky> {
     let client = PubkyHttpClient::builder()
@@ -16,27 +16,26 @@ fn connect_to_testnet() -> anyhow::Result<Pubky> {
 
 pub async fn run(action: &SeedAction) -> anyhow::Result<()> {
     match action {
-        SeedAction::User {
-            index,
-            hs,
-            profile,
-        } => {
+        SeedAction::User { index, hs, profile } => {
             return seed_user(*index, *hs, *profile).await;
         }
         _ => {}
     }
 
-    let sdk = connect_to_testnet()
-        .context("seed command requires a running antfarm (cargo run)")?;
+    let sdk =
+        connect_to_testnet().context("seed command requires a running antfarm (cargo run)")?;
 
     println!("\n{}", "▸ Seeding cross-homeserver reference".cyan().bold());
 
     match action {
         SeedAction::Follow { from, to } => seed_follow(&sdk, *from, *to).await,
         SeedAction::Tag { from, to, label } => seed_tag(&sdk, *from, *to, label).await,
-        SeedAction::TagResource { from, target, label, app } => {
-            seed_tag_resource(&sdk, *from, target, label, app).await
-        }
+        SeedAction::TagResource {
+            from,
+            target,
+            label,
+            app,
+        } => seed_tag_resource(&sdk, *from, target, label, app).await,
         SeedAction::Mention { from, to } => seed_mention(&sdk, *from, to).await,
         SeedAction::User { .. } => unreachable!(),
     }
@@ -52,7 +51,9 @@ async fn seed_follow(sdk: &Pubky, from: usize, to: usize) -> anyhow::Result<()> 
     let session = sessions.get(sdk, from).await?;
     social::create_follow(&session, &to_pk.z32())
         .await
-        .context(format!("failed to create follow from user {from} to user {to} — is antfarm running?"))?;
+        .context(format!(
+            "failed to create follow from user {from} to user {to} — is antfarm running?"
+        ))?;
 
     println!("\n{}", "  Seed result:".white().bold());
     println!("  {} follow", "action:".dimmed());
@@ -79,7 +80,9 @@ async fn seed_tag(sdk: &Pubky, from: usize, to: usize, label: &str) -> anyhow::R
     let session = sessions.get(sdk, from).await?;
     social::create_tag(&session, &target_uri, label)
         .await
-        .context(format!("failed to create tag from user {from} to user {to} — is antfarm running?"))?;
+        .context(format!(
+            "failed to create tag from user {from} to user {to} — is antfarm running?"
+        ))?;
 
     println!("\n{}", "  Seed result:".white().bold());
     println!("  {} tag (label: {})", "action:".dimmed(), label.yellow());
@@ -90,7 +93,13 @@ async fn seed_tag(sdk: &Pubky, from: usize, to: usize, label: &str) -> anyhow::R
     Ok(())
 }
 
-async fn seed_tag_resource(sdk: &Pubky, from: usize, target: &str, label: &str, app: &str) -> anyhow::Result<()> {
+async fn seed_tag_resource(
+    sdk: &Pubky,
+    from: usize,
+    target: &str,
+    label: &str,
+    app: &str,
+) -> anyhow::Result<()> {
     let (_, from_kp) = keypair_from_index(from);
     let from_pk = from_kp.public_key();
 
@@ -98,10 +107,17 @@ async fn seed_tag_resource(sdk: &Pubky, from: usize, target: &str, label: &str, 
     let session = sessions.get(sdk, from).await?;
     social::create_tag_for_app(&session, target, label, app)
         .await
-        .context(format!("failed to create tag-resource from user {from} — is antfarm running?"))?;
+        .context(format!(
+            "failed to create tag-resource from user {from} — is antfarm running?"
+        ))?;
 
     println!("\n{}", "  Seed result:".white().bold());
-    println!("  {} tag-resource (label: {}, app: {})", "action:".dimmed(), label.yellow(), app.cyan());
+    println!(
+        "  {} tag-resource (label: {}, app: {})",
+        "action:".dimmed(),
+        label.yellow(),
+        app.cyan()
+    );
     println!("  {} user {} ({})", "from:".dimmed(), from, from_pk.z32());
     println!("  {} {}", "target:".dimmed(), target);
 
@@ -125,7 +141,9 @@ async fn seed_mention(sdk: &Pubky, from: usize, to_indices: &[usize]) -> anyhow:
     let session = sessions.get(sdk, from).await?;
     let (author_pk, post_id) = social::create_mention(&session, from, &mentioned)
         .await
-        .context(format!("failed to create mention from user {from} — is antfarm running?"))?;
+        .context(format!(
+            "failed to create mention from user {from} — is antfarm running?"
+        ))?;
 
     println!("\n{}", "  Seed result:".white().bold());
     println!("  {} mention", "action:".dimmed());
@@ -133,7 +151,11 @@ async fn seed_mention(sdk: &Pubky, from: usize, to_indices: &[usize]) -> anyhow:
     for (i, idx) in to_indices.iter().enumerate() {
         println!(
             "  {}   user {} ({})",
-            if i == 0 { "to:".dimmed() } else { "   ".dimmed() },
+            if i == 0 {
+                "to:".dimmed()
+            } else {
+                "   ".dimmed()
+            },
             idx,
             mentioned[i].z32()
         );
@@ -149,10 +171,7 @@ async fn seed_mention(sdk: &Pubky, from: usize, to_indices: &[usize]) -> anyhow:
 }
 
 async fn seed_user(index: Option<usize>, hs: u8, profile: bool) -> anyhow::Result<()> {
-    println!(
-        "\n{}",
-        "▸ Creating user via control socket".cyan().bold()
-    );
+    println!("\n{}", "▸ Creating user via control socket".cyan().bold());
 
     let addr = crate::config::DEFAULT_CONTROL_ADDR;
     let resp = crate::control::client::send_user(addr, index.map(|i| i as u8), hs, profile)
@@ -162,7 +181,11 @@ async fn seed_user(index: Option<usize>, hs: u8, profile: bool) -> anyhow::Resul
     if resp.ok {
         println!("\n{}", "  Result:".white().bold());
         println!("  {} user", "action:".dimmed());
-        println!("  {}  {}", "hs:".dimmed(), resp.label.as_deref().unwrap_or("?"));
+        println!(
+            "  {}  {}",
+            "hs:".dimmed(),
+            resp.label.as_deref().unwrap_or("?")
+        );
         if let Some(pk) = &resp.public_key {
             println!("  {}  {}", "pk:".dimmed(), pk);
         }

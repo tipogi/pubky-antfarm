@@ -43,7 +43,7 @@ impl SessionCache {
             .get_or_try_init(|| async {
                 let keypair = UserKeys::keypair_at(index);
                 let public_key = keypair.public_key();
-                let session = sdk.signer(keypair).signin().await?;
+                let session = sdk.signer(keypair).signin_cookie().await?;
                 anyhow::Ok(UserSession {
                     public_key,
                     storage: session.storage(),

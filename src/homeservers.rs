@@ -3,7 +3,7 @@ use pubky_testnet::pubky::{Keypair, PublicKey};
 use pubky_testnet::pubky_homeserver::{ConfigToml, ConnectionString, HomeserverApp, MockDataDir};
 use pubky_testnet::StaticTestnet;
 
-use crate::config::{HomeserverEntry, AntfarmConfig};
+use crate::config::{AntfarmConfig, HomeserverEntry};
 
 /// A homeserver tracked by the runtime, with the metadata needed for both
 /// simulator activity (the `PublicKey`) and the dashboard (label, seed, URL).
@@ -29,15 +29,11 @@ fn admin_url(hs: &HomeserverApp) -> String {
         .unwrap_or_default()
 }
 
-fn test_config(
-    pg_url: &str,
-    label: &str,
-    storage_quota_mb: u64,
-) -> anyhow::Result<ConfigToml> {
+fn test_config(pg_url: &str, label: &str, storage_quota_mb: u64) -> anyhow::Result<ConfigToml> {
     let mut config = ConfigToml::default_test_config();
     let conn_str = crate::db::connection_string(pg_url, label);
     config.general.database_url = ConnectionString::new(&conn_str)?;
-    config.general.user_storage_quota_mb = storage_quota_mb;
+    config.storage.default_quota_mb = (storage_quota_mb > 0).then_some(storage_quota_mb);
     Ok(config)
 }
 
@@ -110,7 +106,10 @@ pub async fn create_dynamic(
     let config = test_config(pg_url, &label, storage_quota_mb)?;
     let conn_str = crate::db::connection_string(pg_url, &label);
     let mock_dir = MockDataDir::new(config, Some(Keypair::from_secret(&seed_bytes)))?;
-    let hs = testnet.testnet.create_homeserver_app_with_mock(mock_dir).await?;
+    let hs = testnet
+        .testnet
+        .create_homeserver_app_with_mock(mock_dir)
+        .await?;
     let pk = hs.public_key();
     let http_url = hs.icann_http_url().to_string();
     print_hs(&label, &pk.z32(), &http_url);

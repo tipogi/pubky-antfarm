@@ -45,7 +45,11 @@ pub(crate) fn normalize_mention_key(key: &str) -> anyhow::Result<String> {
         anyhow::bail!("mention key must be a bare pubky z32 key");
     }
     let z32 = trimmed.strip_prefix("pubky").unwrap_or(trimmed);
-    if !z32.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) || z32.len() < 40 {
+    if !z32
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        || z32.len() < 40
+    {
         anyhow::bail!("invalid mention key");
     }
     Ok(z32.to_string())

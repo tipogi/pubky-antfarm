@@ -72,6 +72,8 @@ export const api = {
     postJson("/api/homeserver/island", { index, island }),
   addUser: (hs: number, profile: boolean) =>
     postJson("/api/user", { hs, profile }),
+  changeHomeserver: (userIndex: number, targetSeed: number) =>
+    postJson("/api/user/change-homeserver", { userIndex, targetSeed }),
   follow: (from: number, target: string) =>
     postJson("/api/follow", { from, target }),
   tag: (from: number, target: string, label: string) =>

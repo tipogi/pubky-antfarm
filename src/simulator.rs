@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use colored::Colorize;
 use futures_util::stream::{self, StreamExt};
-use pubky_testnet::pubky::{PublicKey, Pubky};
+use pubky_testnet::pubky::{Pubky, PublicKey};
 use rand::RngExt as _;
 use tokio::sync::{Notify, RwLock, Semaphore};
 
@@ -41,10 +41,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn new(
-        user_keys: social::UserKeys,
-        posts: Vec<(PublicKey, String)>,
-    ) -> Self {
+    pub fn new(user_keys: social::UserKeys, posts: Vec<(PublicKey, String)>) -> Self {
         Self {
             user_keys,
             posts,
@@ -234,9 +231,8 @@ pub fn plan_tick(sim: &SimulatorConfig) -> VecDeque<SimOp> {
     let num_tags = rng.random_range(sim.tags_per_tick[0]..=sim.tags_per_tick[1]);
     let num_follows = rng.random_range(sim.follows_per_tick[0]..=sim.follows_per_tick[1]);
 
-    let mut ops = VecDeque::with_capacity(
-        (num_users + num_posts + num_tags + num_follows) as usize,
-    );
+    let mut ops =
+        VecDeque::with_capacity((num_users + num_posts + num_tags + num_follows) as usize);
     for _ in 0..num_users {
         ops.push_back(SimOp::User);
     }
@@ -268,7 +264,11 @@ pub async fn run_tick_ops(
     ops: VecDeque<SimOp>,
 ) -> TickSummary {
     let results: Vec<TickSummary> = stream::iter(ops.into_iter())
-        .map(|op| run_op(sdk, snapshot, registry, sessions, limiter, dirty, max_users, op))
+        .map(|op| {
+            run_op(
+                sdk, snapshot, registry, sessions, limiter, dirty, max_users, op,
+            )
+        })
         .buffer_unordered(concurrency.max(1))
         .collect()
         .await;
@@ -402,7 +402,11 @@ async fn create_one_follow(sdk: &Pubky, sessions: &SessionCache, registry: &Regi
 
     match social::create_follow(&session, &followee_pk.z32()).await {
         Ok(()) => {
-            registry.write().await.follows.push((follower_idx, followee_idx));
+            registry
+                .write()
+                .await
+                .follows
+                .push((follower_idx, followee_idx));
             1
         }
         Err(e) => {
@@ -538,6 +542,8 @@ fn pick_homeserver(
         return None;
     }
     let idx = rand::rng().random_range(0..eligible.len());
-    Some((eligible[idx].label.clone(), eligible[idx].public_key.clone()))
+    Some((
+        eligible[idx].label.clone(),
+        eligible[idx].public_key.clone(),
+    ))
 }
-
