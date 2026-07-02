@@ -18,6 +18,7 @@ import { CreateUserModal, AddUserKeyButton } from "./CreateUserModal";
 import { HomeserverStatusMenu } from "./HomeserverStatusMenu";
 import { IslandPill } from "./IslandPill";
 import { AnalyticsView } from "./AnalyticsView";
+import { SearchView, SearchIcon } from "./SearchView";
 import { HomeserverUsersView } from "./HomeserverUsersView";
 import { ToastNotice, type ToastData } from "./ToastNotice";
 import { PkarrRecordModal } from "./PkarrRecordModal";
@@ -31,7 +32,7 @@ export type RunAction = (
   pendingText?: string
 ) => void;
 
-type View = "graph" | "homeservers" | "stats";
+type View = "graph" | "homeservers" | "stats" | "search";
 
 export default function App() {
   const { state, connected } = useDashboard();
@@ -179,6 +180,12 @@ export default function App() {
             icon={<GraphIcon />}
           />
           <RailButton
+            label="Search"
+            active={view === "search"}
+            onClick={() => setView("search")}
+            icon={<SearchIcon className="rail-icon rail-icon-search" />}
+          />
+          <RailButton
             label="Stats"
             active={view === "stats"}
             onClick={() => setView("stats")}
@@ -195,7 +202,9 @@ export default function App() {
       </nav>
 
       <main className="content">
-        {!state ? (
+        {view === "search" ? (
+          <SearchView />
+        ) : !state ? (
           <div className="content-body">
             <p className="muted">Connecting to antfarm…</p>
           </div>
@@ -285,11 +294,11 @@ export default function App() {
               />
             )}
           </>
-        ) : (
+        ) : view === "stats" ? (
           <div className="content-body analytics-body">
             <AnalyticsView state={state} feed={feed} connected={connected} />
           </div>
-        )}
+        ) : null}
       </main>
 
       {view === "graph" && drawerHs && (
