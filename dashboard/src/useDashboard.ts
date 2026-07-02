@@ -27,12 +27,26 @@ export interface Homeserver {
   pending?: boolean;
 }
 
+export type InfraNodeKind =
+  | "bootstrap"
+  | "dht_peer"
+  | "pkarr_relay"
+  | "http_relay";
+
+export interface InfraNode {
+  id: string;
+  kind: InfraNodeKind;
+  label: string;
+  address: string;
+}
+
 export interface NetworkInfo {
   bootstrap: string;
   pkarrRelay: string;
   httpRelay: string;
   httpRelayInbox: string;
   httpRelayLink: string;
+  nodes: InfraNode[];
 }
 
 export type Range = [number, number];

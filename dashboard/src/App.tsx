@@ -5,7 +5,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { CopyButton } from "./CopyButton";
 import {
   useDashboard,
   type Homeserver,
@@ -37,7 +36,6 @@ type View = "graph" | "homeservers" | "stats" | "search";
 export default function App() {
   const { state, connected } = useDashboard();
   const feed = useActivity();
-  const [drawerHs, setDrawerHs] = useState<Homeserver | null>(null);
   const [detailHs, setDetailHs] = useState<Homeserver | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
@@ -70,7 +68,6 @@ export default function App() {
     homeservers.reduce((max, hs) => Math.max(max, hs.seed), 0) + 1;
 
   useEffect(() => {
-    if (view !== "graph") setDrawerHs(null);
     if (view !== "homeservers") {
       setDetailHs(null);
       setCreateHsOpen(false);
@@ -212,10 +209,10 @@ export default function App() {
           <div className="content-body graph">
             {homeservers.length > 0 ? (
               <GraphView
+                network={state.network}
                 homeservers={homeservers}
                 follows={state.follows ?? []}
                 feed={feed}
-                onSelect={setDrawerHs}
                 nextIndex={nextIndex}
                 busy={busy}
                 onCreateHomeserver={(index) => createHomeserver(index)}
@@ -300,15 +297,6 @@ export default function App() {
           </div>
         ) : null}
       </main>
-
-      {view === "graph" && drawerHs && (
-        <HomeserverDrawer
-          hs={resolveHs(drawerHs)}
-          busy={busy}
-          onAction={runAction}
-          onClose={() => setDrawerHs(null)}
-        />
-      )}
 
       {pkarrModal && (
         <PkarrRecordModal
@@ -851,162 +839,5 @@ function GlobeLinkIcon() {
       <circle cx="12" cy="12" r="10" />
       <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </svg>
-  );
-}
-
-function StatusToggle({
-  hs,
-  busy,
-  onAction,
-}: {
-  hs: Homeserver;
-  busy: boolean;
-  onAction: RunAction;
-}) {
-  const active = hs.status === "active";
-
-  if (hs.seed === 0) {
-    return (
-      <span className="status-locked" title="The built-in homeserver is always active">
-        Always active
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={active}
-      className={`status-switch ${active ? "on" : "off"}`}
-      disabled={busy}
-      onClick={() =>
-        onAction(() =>
-          active ? api.stopHomeserver(hs.seed) : api.seedHomeserver(hs.seed)
-        )
-      }
-      title={active ? "Set dormant" : "Set active"}
-    >
-      <span className="status-switch-track">
-        <span className="status-switch-thumb" />
-      </span>
-      <span className="status-switch-text">{active ? "Active" : "Dormant"}</span>
-    </button>
-  );
-}
-
-function HomeserverDrawer({
-  hs,
-  busy,
-  onAction,
-  onClose,
-}: {
-  hs: Homeserver;
-  busy: boolean;
-  onAction: RunAction;
-  onClose: () => void;
-}) {
-  const [profile, setProfile] = useState(false);
-  const { color: hubColor } = hubColorFor(hs.seed);
-
-  return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <aside
-        className="drawer"
-        style={{ "--hs-accent": hubColor } as CSSProperties}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="drawer-head">
-          <div className="drawer-identity">
-            <span className="drawer-swatch" aria-hidden>
-              <svg viewBox={ROOT_VIEWBOX} className="drawer-swatch-icon">
-                <RootPaths />
-              </svg>
-            </span>
-            <div className="drawer-title-block">
-              <h2>{hs.label}</h2>
-              <p className="drawer-sub">
-                {hs.userCount} {hs.userCount === 1 ? "user" : "users"} · seed{" "}
-                {hs.seed}
-              </p>
-            </div>
-          </div>
-          <button className="close-btn" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-
-        <DrawerField label="Public key">
-          <code className="mono">{hs.publicKey}</code>
-          <CopyButton value={hs.publicKey} />
-        </DrawerField>
-
-        <DrawerField label="Homeserver URL">
-          <a className="mono link" href={hs.httpUrl} target="_blank" rel="noreferrer">
-            {hs.httpUrl}
-          </a>
-          <CopyButton value={hs.httpUrl} />
-        </DrawerField>
-
-        <div className="drawer-actions-row">
-          <span className="drawer-actions-label">Simulator</span>
-          <span className="drawer-actions-label">User</span>
-
-          <div className="drawer-panel drawer-actions-panel">
-            <StatusToggle hs={hs} busy={busy} onAction={onAction} />
-          </div>
-
-          <div className="drawer-panel drawer-actions-panel add-user-panel">
-            <button
-              className="action primary add-user-btn"
-              disabled={busy}
-              onClick={() => onAction(() => api.addUser(hs.seed, profile))}
-            >
-              Add
-            </button>
-            <label className="profile-toggle">
-              <input
-                type="checkbox"
-                checked={profile}
-                onChange={(e) => setProfile(e.target.checked)}
-              />
-              <span>with profile</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="drawer-field drawer-users">
-          <span className="drawer-label">Users ({hs.userCount})</span>
-          {hs.users.length === 0 ? (
-            <p className="muted small drawer-users-empty">No users yet.</p>
-          ) : (
-            <ul className="user-list">
-              {hs.users.map((user) => (
-                <li key={user.index} className="user-row">
-                  <span className="user-index">#{user.index}</span>
-                  <code className="mono user-pk">{user.publicKey}</code>
-                  <CopyButton value={user.publicKey} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function DrawerField({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="drawer-field">
-      <span className="drawer-label">{label}</span>
-      <div className="drawer-value">{children}</div>
-    </div>
   );
 }

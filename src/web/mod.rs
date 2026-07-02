@@ -4,6 +4,7 @@ pub mod storage;
 use std::collections::HashMap;
 
 use serde::Serialize;
+use pubky_testnet::StaticTestnet;
 
 use crate::config::{AntfarmConfig, SimulatorConfig};
 use crate::homeservers::Homeserver;
@@ -80,6 +81,24 @@ impl HomeserverInfo {
     }
 }
 
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InfraNodeKind {
+    Bootstrap,
+    DhtPeer,
+    PkarrRelay,
+    HttpRelay,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InfraNodeInfo {
+    pub id: String,
+    pub kind: InfraNodeKind,
+    pub label: String,
+    pub address: String,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkInfo {
@@ -88,6 +107,7 @@ pub struct NetworkInfo {
     pub http_relay: String,
     pub http_relay_inbox: String,
     pub http_relay_link: String,
+    pub nodes: Vec<InfraNodeInfo>,
 }
 
 impl Default for NetworkInfo {
@@ -98,7 +118,70 @@ impl Default for NetworkInfo {
             http_relay: HTTP_RELAY_URL.to_string(),
             http_relay_inbox: HTTP_RELAY_INBOX_URL.to_string(),
             http_relay_link: HTTP_RELAY_LINK_URL.to_string(),
+            nodes: Vec::new(),
         }
+    }
+}
+
+/// Build live network topology from the running StaticTestnet.
+pub fn network_info_from_testnet(testnet: &StaticTestnet) -> NetworkInfo {
+    let all_bootstrap = testnet.bootstrap_nodes();
+    let fixed_bootstrap = all_bootstrap
+        .iter()
+        .find(|n| n.contains(":6881"))
+        .cloned()
+        .unwrap_or_else(|| BOOTSTRAP_ADDR.to_string());
+
+    let dht_peers: Vec<String> = all_bootstrap
+        .iter()
+        .filter(|n| !n.contains(":6881"))
+        .cloned()
+        .collect();
+
+    let pkarr_url = testnet.pkarr_relay().local_url().to_string();
+    let http_base = testnet
+        .http_relay()
+        .local_url()
+        .to_string()
+        .trim_end_matches('/')
+        .to_string();
+
+    let mut nodes = vec![InfraNodeInfo {
+        id: "bootstrap".into(),
+        kind: InfraNodeKind::Bootstrap,
+        label: "Bootstrap :6881".into(),
+        address: fixed_bootstrap.clone(),
+    }];
+
+    for (i, addr) in dht_peers.iter().enumerate() {
+        nodes.push(InfraNodeInfo {
+            id: format!("dht-{}", i + 1),
+            kind: InfraNodeKind::DhtPeer,
+            label: format!("DHT peer {}", i + 1),
+            address: addr.clone(),
+        });
+    }
+
+    nodes.push(InfraNodeInfo {
+        id: "pkarr-relay".into(),
+        kind: InfraNodeKind::PkarrRelay,
+        label: "Pkarr relay".into(),
+        address: pkarr_url.clone(),
+    });
+    nodes.push(InfraNodeInfo {
+        id: "http-relay".into(),
+        kind: InfraNodeKind::HttpRelay,
+        label: "HTTP relay".into(),
+        address: http_base.clone(),
+    });
+
+    NetworkInfo {
+        bootstrap: fixed_bootstrap,
+        pkarr_relay: pkarr_url,
+        http_relay: http_base.clone(),
+        http_relay_inbox: format!("{http_base}/inbox"),
+        http_relay_link: format!("{http_base}/link"),
+        nodes,
     }
 }
 
@@ -187,6 +270,7 @@ impl DashboardState {
         config: &AntfarmConfig,
         registry: Option<&Registry>,
         activity: ActivityTotals,
+        network: NetworkInfo,
     ) -> Self {
         let mut users_by_hs: HashMap<String, Vec<UserInfo>> = HashMap::new();
         if let Some(reg) = registry {
@@ -224,7 +308,7 @@ impl DashboardState {
         let follows = Self::build_user_follows(registry);
 
         Self {
-            network: NetworkInfo::default(),
+            network,
             simulator: SimulatorInfo::from(&config.simulator),
             activity,
             homeservers,

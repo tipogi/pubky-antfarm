@@ -152,12 +152,14 @@ impl Runtime {
         let limiter = Arc::new(Semaphore::new(config.simulator.concurrency.max(1)));
         let dirty = Arc::new(Notify::new());
 
+        let network = web::network_info_from_testnet(&testnet);
         let (state_tx, _) = watch::channel(DashboardState::build(
             &homeservers,
             &dormant,
             &config,
             None,
             ActivityTotals::default(),
+            network,
         ));
         let (activity_tx, _) = broadcast::channel(128);
 
@@ -717,12 +719,14 @@ impl Runtime {
     /// Push the current homeserver topology + users to dashboard subscribers.
     async fn publish_state(&self) {
         let reg = self.registry.read().await;
+        let network = web::network_info_from_testnet(&self.testnet);
         let _ = self.state_tx.send(DashboardState::build(
             &self.homeservers,
             &self.dormant,
             &self.config,
             Some(&reg),
             self.totals.snapshot(),
+            network,
         ));
     }
 }

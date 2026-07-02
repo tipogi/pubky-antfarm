@@ -2089,42 +2089,92 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   fill: rgba(255, 255, 255, 0.05);
 }
 
+.gv-infra-nodes .gv-node.infra {
+  cursor: default;
+}
+.gv-infra-label {
+  fill: #b8c2d8;
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.gv-infra-shape {
+  transition: filter 0.15s ease;
+}
+.gv-infra-nodes .gv-node.infra:hover .gv-infra-shape {
+  filter: brightness(1.12);
+}
+
+/* Per-homeserver DHT participants: same tone as the shared DHT peers. */
+.gv-dht-clients .gv-node.dht_client {
+  cursor: default;
+}
+/* Revealed only while hovering a DHT node: links it to its own homeserver. */
+.gv-dht-hover-edge {
+  stroke-width: 1.5;
+  stroke-opacity: 0.85;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.gv-dht-client-shape {
+  transition: filter 0.15s ease;
+}
+.gv-dht-clients .gv-node.dht_client:hover .gv-dht-client-shape {
+  filter: brightness(1.15);
+}
+.gv-dht-client-label {
+  fill: #8fa3bc;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.gv-card-dht-client .gv-card-bio {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.gv-node.hub.expanded .gv-hub-core {
+  stroke-width: 3.5;
+  filter: brightness(1.08);
+}
+
+.gv-node.user.spotlight .gv-user-core {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+
+.gv-legend-infra {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.gv-legend-chip {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-left: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  vertical-align: middle;
+}
+.gv-legend-chip:first-child {
+  margin-left: 0;
+}
+
+.gv-card-infra .gv-card-pk {
+  word-break: break-all;
+}
+
 .gv-spoke {
   stroke-width: 1;
   stroke-opacity: 0.16;
 }
 .gv-spoke.dim {
   stroke-opacity: 0.04;
-}
-
-.gv-follow {
-  fill: none;
-  stroke: #9aa3b8;
-  stroke-width: 1.4;
-  opacity: 0.45;
-}
-.gv-follow.hot {
-  stroke: #ffffff;
-  opacity: 0.95;
-  stroke-width: 1.8;
-}
-.gv-follow.out {
-  stroke: var(--green);
-}
-.gv-follow.in {
-  stroke: var(--accent);
-}
-.gv-arrow-head {
-  fill: #9aa3b8;
-}
-.gv-follow-label {
-  fill: #9aa3b8;
-  font-size: 10px;
-  font-style: italic;
-  text-anchor: middle;
-}
-.gv-follows .dim {
-  opacity: 0.08;
 }
 
 .gv-node {
@@ -2165,11 +2215,17 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
 .gv-node.off .gv-hub-glow {
   opacity: 0.45;
 }
+/* Dormant / inactive homeserver: fade the whole hub (logo + labels included)
+   and desaturate so it clearly reads as "not active". */
+.gv-node.hub.off {
+  opacity: 0.55;
+  filter: saturate(0.5);
+}
 .gv-hub-root {
   overflow: visible;
 }
 .gv-hub-label {
-  fill: var(--text);
+  fill: var(--muted);
   font-size: 14px;
   font-weight: 700;
   text-anchor: middle;
@@ -2201,7 +2257,7 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
     0 0 32px color-mix(in srgb, var(--gv-accent, var(--accent)) 13%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 6;
 }
 .gv-card-head {
@@ -2280,6 +2336,52 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   color: var(--muted);
   word-break: break-all;
   line-height: 1.4;
+}
+/* Copyable key/address: full-width button that reveals a copy affordance. */
+.gv-card-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.gv-card-copy:hover {
+  color: var(--text);
+}
+.gv-card-copy-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+.gv-card-copy-icon {
+  flex: none;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  opacity: 0.65;
+}
+.gv-card-copy-icon .gv-ico {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gv-card-copy:hover .gv-card-copy-icon {
+  opacity: 1;
+}
+.gv-card-copy.copied {
+  color: var(--green, #5dd3b6);
+}
+.gv-card-copy.copied .gv-card-copy-icon {
+  opacity: 1;
 }
 .gv-card-bio {
   margin: 9px 0 0;
