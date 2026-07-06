@@ -1,0 +1,654 @@
+/* ---- Network graph ---- */
+.graph-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--grey);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, stroke 0.15s ease;
+}
+.edge.hot {
+  stroke: var(--accent);
+  opacity: 1;
+}
+.edge.dim {
+  opacity: 0.12;
+}
+.arrow-head {
+  fill: var(--grey);
+}
+.arrow-head.hot {
+  fill: var(--accent);
+}
+
+.gnode {
+  cursor: pointer;
+}
+.gnode-halo {
+  fill: transparent;
+  transition: fill 0.15s ease;
+}
+.gnode.hot .gnode-halo {
+  fill: var(--green-soft);
+}
+.gnode-core {
+  stroke-width: 2;
+  transition: opacity 0.15s ease;
+}
+.gnode.active .gnode-core {
+  fill: var(--green-soft);
+  stroke: var(--green);
+}
+.gnode.dormant .gnode-core {
+  fill: var(--panel-2);
+  stroke: var(--grey);
+}
+.gnode.dim {
+  opacity: 0.3;
+}
+.gnode-label {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+.gnode-count {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+.gnode.active .gnode-count {
+  fill: var(--green);
+}
+
+.graph-legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 10px 6px 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.graph-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.graph-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  max-width: 280px;
+}
+
+/* ---- Investigation graph (GraphView) ---- */
+.gv {
+  position: relative;
+  height: 700px;
+  background:
+    radial-gradient(
+      ellipse 120% 90% at 50% -10%,
+      rgba(255, 255, 255, 0.025) 0%,
+      transparent 55%
+    ),
+    #090909;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.gv-svg {
+  display: block;
+  cursor: grab;
+}
+.gv-svg:active {
+  cursor: grabbing;
+}
+.gv-grid-dot {
+  fill: rgba(255, 255, 255, 0.05);
+}
+
+.gv-infra-nodes .gv-node.infra {
+  cursor: default;
+}
+.gv-infra-label {
+  fill: #b8c2d8;
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.gv-infra-shape {
+  transition: filter 0.15s ease;
+}
+.gv-infra-nodes .gv-node.infra:hover .gv-infra-shape {
+  filter: brightness(1.12);
+}
+
+/* Per-homeserver DHT participants: same tone as the shared DHT peers. */
+.gv-dht-clients .gv-node.dht_client {
+  cursor: default;
+}
+/* Revealed only while hovering a DHT node: links it to its own homeserver. */
+.gv-dht-hover-edge {
+  stroke-width: 1.5;
+  stroke-opacity: 0.85;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.gv-dht-client-shape {
+  transition: filter 0.15s ease;
+}
+.gv-dht-clients .gv-node.dht_client:hover .gv-dht-client-shape {
+  filter: brightness(1.15);
+}
+.gv-dht-client-label {
+  fill: #8fa3bc;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.gv-card-dht-client .gv-card-bio {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.gv-node.hub.expanded .gv-hub-core {
+  stroke-width: 3.5;
+  filter: brightness(1.08);
+}
+
+.gv-node.user.spotlight .gv-user-core {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+
+.gv-legend-infra {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.gv-legend-items {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.gv-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: default;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+.gv-legend-item:hover,
+.gv-legend-item.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.gv-legend-stats {
+  pointer-events: none;
+}
+.gv-legend-chip {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-left: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  vertical-align: middle;
+}
+.gv-legend-chip:first-child {
+  margin-left: 0;
+}
+
+.gv-card-infra .gv-card-pk {
+  word-break: break-all;
+}
+
+.gv-spoke {
+  stroke-width: 1;
+  stroke-opacity: 0.16;
+}
+.gv-spoke.dim {
+  stroke-opacity: 0.04;
+}
+
+.gv-follow-edges {
+  pointer-events: none;
+}
+.gv-follow-edge {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-opacity: 0.85;
+  stroke-dasharray: 5 4;
+}
+.gv-follow-edge.out {
+  stroke: #e07b1e;
+}
+.gv-follow-edge.in {
+  stroke: #5b9fd4;
+}
+
+.gv-node {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.gv-node.dim {
+  opacity: 0.14;
+}
+.gv-user-core {
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 2;
+}
+.gv-node.off .gv-user-core {
+  opacity: 0.45;
+}
+.gv-node.sel .gv-user-core {
+  stroke: #ffffff;
+  stroke-width: 3.5;
+}
+.gv-follow-badge {
+  fill: var(--yellow);
+  stroke: #0d0d0d;
+  stroke-width: 1.5;
+}
+.glyph {
+  fill: rgba(255, 255, 255, 0.92);
+}
+.gv-key {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gv-hub-glow {
+  pointer-events: none;
+}
+.gv-node.off .gv-hub-core,
+.gv-node.off .gv-hub-glow {
+  opacity: 0.45;
+}
+/* Dormant / inactive homeserver: fade the whole hub (logo + labels included)
+   and desaturate so it clearly reads as "not active". */
+.gv-node.hub.off {
+  opacity: 0.55;
+  filter: saturate(0.5);
+}
+.gv-hub-root {
+  overflow: visible;
+}
+.gv-hub-label {
+  fill: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+.gv-hub-count {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.gv-card {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 20px));
+  width: 248px;
+  background:
+    radial-gradient(
+      ellipse 95% 70% at 0% 0%,
+      color-mix(in srgb, var(--gv-accent, var(--accent)) 22%, transparent) 0%,
+      transparent 62%
+    ),
+    rgba(18, 18, 18, 0.82);
+  border: 1px solid
+    color-mix(in srgb, var(--gv-accent, var(--accent)) 34%, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 13px 14px;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.6),
+    0 0 32px color-mix(in srgb, var(--gv-accent, var(--accent)) 13%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: auto;
+  z-index: 6;
+}
+.gv-card-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.gv-card-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid
+    color-mix(in srgb, var(--gv-accent, var(--accent)) 55%, transparent);
+}
+.gv-card-avatar.fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0d0d0d;
+  text-transform: lowercase;
+  border: none;
+}
+.gv-card-avatar-mark {
+  width: 22px;
+  height: auto;
+  fill: rgba(13, 13, 13, 0.82);
+}
+.gv-card-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+.gv-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.gv-card-title strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+.gv-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.gv-card-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.gv-card-status.active {
+  color: color-mix(in srgb, var(--gv-accent, var(--accent)) 72%, #fff 28%);
+}
+.gv-card-status.active .gv-card-status-dot {
+  background: var(--gv-accent, var(--accent));
+  box-shadow: 0 0 8px var(--gv-accent, var(--accent));
+}
+.gv-card-pk {
+  display: block;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+  line-height: 1.4;
+}
+/* Copyable key/address: full-width button that reveals a copy affordance. */
+.gv-card-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.gv-card-copy:hover {
+  color: var(--text);
+}
+.gv-card-copy-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+.gv-card-copy-icon {
+  flex: none;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  opacity: 0.65;
+}
+.gv-card-copy-icon .gv-ico {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gv-card-copy:hover .gv-card-copy-icon {
+  opacity: 1;
+}
+.gv-card-copy.copied {
+  color: var(--green, #5dd3b6);
+}
+.gv-card-copy.copied .gv-card-copy-icon {
+  opacity: 1;
+}
+.gv-card-bio {
+  margin: 9px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gv-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.gv-tag {
+  font-size: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--text);
+}
+
+.gv-controls {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.gv-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(20, 20, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: var(--text);
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.gv-controls button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  color: var(--accent);
+  background: rgba(30, 30, 30, 0.85);
+}
+.gv-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.gv-ico {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+
+.gv-legend {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
+  max-width: calc(100% - 32px);
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(12, 12, 12, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  padding: 7px 18px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+.gv-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gv-timeline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72px;
+  padding: 10px 16px 12px;
+  z-index: 2;
+  background: linear-gradient(
+    to top,
+    rgba(8, 8, 8, 0.96),
+    rgba(8, 8, 8, 0)
+  );
+  pointer-events: none;
+}
+.gv-timeline-inner {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  pointer-events: auto;
+}
+.gv-timeline-scroll {
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.gv-timeline-scroll::-webkit-scrollbar {
+  display: none;
+}
+.gv-timeline-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 100%;
+  height: 100%;
+}
+.gv-bar-wrap {
+  position: relative;
+  flex: 1 0 8px;
+  min-width: 3px;
+  max-width: 16px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.gv-bar {
+  width: 100%;
+  min-height: 2px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--accent) 55%, #000),
+    var(--accent)
+  );
+  opacity: 0.7;
+  border-radius: 3px 3px 0 0;
+  transition: opacity 0.12s ease;
+}
+.gv-bar-wrap:hover .gv-bar {
+  opacity: 1;
+}
+.gv-bar-tip {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  z-index: 10;
+  pointer-events: none;
+  white-space: nowrap;
+  background: rgba(20, 20, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 11px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.gv-node.pending {
+  animation: gv-pending-pulse 1.4s ease-in-out infinite;
+}
+
+.gv-node.pending .gv-hub-core {
+  stroke-dasharray: 5 4;
+}
+
+@keyframes gv-pending-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}

@@ -1,22 +1,22 @@
 export const PKARR_VIEWBOX = "0 0 24 24";
 
 /**
- * Signpost mark used for the pkarr relay: a post with a right-pointing sign on
- * top and a left-pointing sign below. Inherits `currentColor` via stroke.
+ * Resolve pin mark used for the pkarr relay: public key at top, pin drops to a
+ * resolved address below. Inherits `currentColor`.
  */
 export function PkarrPaths() {
   return (
     <g
       fill="none"
       stroke="currentColor"
-      strokeWidth={1}
+      strokeWidth={1.75}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="12" cy="2.6" r="0.9" fill="currentColor" stroke="none" />
-      <line x1="12" y1="3.6" x2="12" y2="21" />
-      <polygon points="6.5,4.3 17.5,4.3 20.5,6.8 17.5,9.3 6.5,9.3" />
-      <polygon points="17.5,11.2 17.5,16.2 6.5,16.2 3.5,13.7 6.5,11.2" />
+      <circle cx="12" cy="6" r="2.6" />
+      <line x1="12" y1="8.8" x2="12" y2="15" />
+      <path d="M8.3 17.5a3.7 3.7 0 0 0 7.4 0" />
+      <circle cx="12" cy="17.5" r="1.35" fill="currentColor" stroke="none" />
     </g>
   );
 }

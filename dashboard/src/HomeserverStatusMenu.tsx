@@ -64,14 +64,6 @@ export function HomeserverStatusMenu({
     setOpen(false);
   }, [hs.status]);
 
-  if (hs.seed === 0) {
-    return (
-      <span className="hs-card-pill active hs-status-menu-locked" title="Always active">
-        <StatusPill status="active" />
-      </span>
-    );
-  }
-
   const transition = () => {
     setOpen(false);
     onAction(() =>

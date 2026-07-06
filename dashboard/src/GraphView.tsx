@@ -23,6 +23,7 @@ import { ROOT_RATIO, ROOT_VIEWBOX, RootPaths } from "./RootMark";
 import { DHT_VIEWBOX, DhtPaths } from "./DhtMark";
 import { PKARR_VIEWBOX, PkarrPaths } from "./PkarrMark";
 import { HTTP_VIEWBOX, HttpPaths } from "./HttpMark";
+import { BOOTSTRAP_VIEWBOX, BootstrapPaths } from "./BootstrapMark";
 import { hubColorFor } from "./hubColors";
 
 const HUB_SPACING = 560;
@@ -38,19 +39,58 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 // USER_COLOR, and every DHT node (shared testnet peers + per-homeserver
 // participants) shares INFRA_COLORS.dht_peer. Identity comes from color, not
 // shape, size, or position.
-const HS_COLOR = "#4DA3FF";
+const HS_COLOR = "#E6A817";
 const USER_COLOR = "#B07CFF";
 // DHT nodes reuse the green identity color of the second homeserver (seed 1) as
 // shown in the homeserver list, keeping the two in sync.
 const DHT_COLOR = hubColorFor(1).color;
 // Both relays (pkarr + http) share one relay color.
 const RELAY_COLOR = "#E0654F";
+// Glyph ink for relay nodes — black on coral (contrastInk would yield white).
+const RELAY_GLYPH_COLOR = "#0d0d0d";
 const INFRA_COLORS: Record<InfraNodeKind, string> = {
-  bootstrap: "#F0C34A",
+  bootstrap: "#58A958",
   dht_peer: DHT_COLOR,
   pkarr_relay: RELAY_COLOR,
   http_relay: RELAY_COLOR,
 };
+
+const FOLLOW_OUT_COLOR = "#e07b1e";
+const FOLLOW_IN_COLOR = "#5b9fd4";
+
+type LegendCategory =
+  | "homeserver"
+  | "user"
+  | "dht"
+  | "bootstrap"
+  | "pkarr"
+  | "http_relay";
+
+const LEGEND_ITEMS: {
+  id: LegendCategory;
+  label: string;
+  color: string;
+}[] = [
+  { id: "homeserver", label: "homeserver", color: HS_COLOR },
+  { id: "user", label: "user", color: USER_COLOR },
+  { id: "dht", label: "dht", color: INFRA_COLORS.dht_peer },
+  { id: "bootstrap", label: "bootstrap", color: INFRA_COLORS.bootstrap },
+  { id: "pkarr", label: "pkarr", color: INFRA_COLORS.pkarr_relay },
+  { id: "http_relay", label: "http relay", color: INFRA_COLORS.http_relay },
+];
+
+function nodeLegendCategory(node: Node): LegendCategory | null {
+  if (node.kind === "hub") return "homeserver";
+  if (node.kind === "user") return "user";
+  if (node.kind === "dht_client") return "dht";
+  if (node.kind === "infra" && node.infra) {
+    if (node.infra.kind === "dht_peer") return "dht";
+    if (node.infra.kind === "bootstrap") return "bootstrap";
+    if (node.infra.kind === "pkarr_relay") return "pkarr";
+    if (node.infra.kind === "http_relay") return "http_relay";
+  }
+  return null;
+}
 
 function darkenHex(hex: string, mix = 0.3): string {
   const c = hex.replace("#", "");
@@ -73,6 +113,11 @@ function contrastInk(hex: string): string {
   const b = toLin(parseInt(c.slice(4, 6), 16));
   const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return lum > 0.42 ? "#0d0d0d" : "rgba(255,255,255,0.95)";
+}
+
+function infraGlyphInk(kind: InfraNodeKind, fill: string): string {
+  if (kind === "pkarr_relay" || kind === "http_relay") return RELAY_GLYPH_COLOR;
+  return contrastInk(fill);
 }
 
 interface Node {
@@ -303,14 +348,86 @@ function isSpotlightOnly(
   );
 }
 
+function followEdgeEndpoints(from: Node, to: Node) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  // Leave a gap before the target so the arrowhead sits in open space.
+  const arrowGap = 12;
+  return {
+    x1: from.x + ux * (from.r + 2),
+    y1: from.y + uy * (from.r + 2),
+    x2: to.x - ux * (to.r + arrowGap),
+    y2: to.y - uy * (to.r + arrowGap),
+  };
+}
+
 // Every node type is the same circular token; identity comes from tone + size,
 // never from shape.
-function InfraShape({ node }: { node: Node }) {
+function infraHasGlow(kind?: InfraNodeKind): boolean {
+  return (
+    kind === "bootstrap" || kind === "pkarr_relay" || kind === "http_relay"
+  );
+}
+
+function NodeGlow({
+  id,
+  r,
+  color,
+}: {
+  id: string;
+  r: number;
+  color: string;
+}) {
+  const glowId = `node-glow-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  return (
+    <>
+      <defs>
+        <radialGradient
+          id={glowId}
+          gradientUnits="userSpaceOnUse"
+          cx={0}
+          cy={0}
+          r={r + 34}
+        >
+          <stop
+            offset="0%"
+            stopColor={darkenHex(color, 0.15)}
+            stopOpacity={0.62}
+          />
+          <stop
+            offset="45%"
+            stopColor={darkenHex(color, 0.35)}
+            stopOpacity={0.28}
+          />
+          <stop
+            offset="100%"
+            stopColor={darkenHex(color, 0.5)}
+            stopOpacity={0}
+          />
+        </radialGradient>
+      </defs>
+      <circle className="gv-hub-glow" r={r + 34} fill={`url(#${glowId})`} />
+    </>
+  );
+}
+
+function InfraShape({ node, elevated = false }: { node: Node; elevated?: boolean }) {
   return (
     <circle
       className="gv-infra-shape"
       r={node.r}
-      style={{ fill: node.color, stroke: darkenHex(node.color, 0.4), strokeWidth: 2 }}
+      style={
+        elevated
+          ? {
+              fill: darkenHex(node.color, 0.1),
+              stroke: darkenHex(node.color, 0.48),
+              strokeWidth: 2.5,
+            }
+          : { fill: node.color, stroke: darkenHex(node.color, 0.4), strokeWidth: 2 }
+      }
     />
   );
 }
@@ -339,9 +456,10 @@ function NodeGlyph({
       height={s}
       viewBox={viewBox}
       pointerEvents="none"
-      style={{ color: ink }}
     >
-      {children}
+      <g fill="none" stroke={ink} style={{ color: ink }}>
+        {children}
+      </g>
     </svg>
   );
 }
@@ -375,15 +493,6 @@ function LoupeIcon({ sign }: { sign: "plus" | "minus" }) {
   );
 }
 
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="gv-ico" aria-hidden="true">
-      <line x1="12" y1="5.5" x2="12" y2="18.5" />
-      <line x1="5.5" y1="12" x2="18.5" y2="12" />
-    </svg>
-  );
-}
-
 function FitIcon() {
   return (
     <svg viewBox="0 0 24 24" className="gv-ico" aria-hidden="true">
@@ -400,17 +509,11 @@ export function GraphView({
   homeservers,
   follows,
   feed,
-  nextIndex,
-  busy,
-  onCreateHomeserver,
 }: {
   network: NetworkInfo;
   homeservers: Homeserver[];
   follows: FollowEdge[];
   feed: TickEvent[];
-  nextIndex: number;
-  busy: boolean;
-  onCreateHomeserver: (index: number) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 900, h: 640 });
@@ -438,24 +541,7 @@ export function GraphView({
   const [spotlightUsers, setSpotlightUsers] = useState<Set<number>>(
     () => new Set()
   );
-  const [createOpen, setCreateOpen] = useState(false);
-  const [seed, setSeed] = useState(String(nextIndex));
-  const seedRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!createOpen) setSeed(String(nextIndex));
-  }, [nextIndex, createOpen]);
-  useEffect(() => {
-    if (createOpen) seedRef.current?.focus();
-  }, [createOpen]);
-
-  const seedNum = Number(seed);
-  const seedValid = Number.isInteger(seedNum) && seedNum >= 1 && seedNum <= 23;
-  const submitCreate = () => {
-    if (busy || !seedValid) return;
-    onCreateHomeserver(seedNum);
-    setCreateOpen(false);
-  };
+  const [legendHover, setLegendHover] = useState<LegendCategory | null>(null);
 
   const built = useMemo(() => {
     const social = build(homeservers, SOCIAL_Y_OFFSET);
@@ -589,7 +675,28 @@ export function GraphView({
     return null;
   }, [activeUser, expandedHs, built, follows]);
 
-  const isLit = (id: string) => !focus || focus.has(id);
+  const selectedFollowEdges = useMemo(() => {
+    if (selectedUser == null) return [];
+    return follows.filter(
+      (f) => f.from === selectedUser || f.to === selectedUser
+    );
+  }, [selectedUser, follows]);
+
+  const legendFocus = useMemo(() => {
+    if (!legendHover) return null;
+    const ids = new Set<string>();
+    const all = [...built.infra, ...built.dhtClients, ...built.nodes];
+    for (const n of all) {
+      if (nodeLegendCategory(n) === legendHover) ids.add(n.id);
+    }
+    return ids;
+  }, [legendHover, built]);
+
+  const isLit = (id: string) => {
+    if (focus && !focus.has(id)) return false;
+    if (legendFocus && !legendFocus.has(id)) return false;
+    return true;
+  };
 
   const toggleHub = (label: string) => {
     setExpandedHs((cur) => (cur === label ? null : label));
@@ -603,7 +710,7 @@ export function GraphView({
       setSpotlightUsers(new Set());
       return;
     }
-    const targets = new Set<number>();
+    const targets = new Set<number>([index]);
     follows.forEach((f) => {
       if (f.from === index) targets.add(f.to);
       if (f.to === index) targets.add(f.from);
@@ -651,6 +758,28 @@ export function GraphView({
           >
             <circle cx="2" cy="2" r="1.3" className="gv-grid-dot" />
           </pattern>
+          <marker
+            id="gv-follow-arrow-out"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="5.5"
+            markerHeight="5.5"
+            orient="auto"
+          >
+            <path d="M0,0 L10,5 L0,10 Z" fill={FOLLOW_OUT_COLOR} />
+          </marker>
+          <marker
+            id="gv-follow-arrow-in"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="5.5"
+            markerHeight="5.5"
+            orient="auto"
+          >
+            <path d="M0,0 L10,5 L0,10 Z" fill={FOLLOW_IN_COLOR} />
+          </marker>
         </defs>
 
         <rect
@@ -684,6 +813,35 @@ export function GraphView({
             })}
           </g>
 
+          {/* follow edges for the pinned user */}
+          {selectedUser != null && selectedFollowEdges.length > 0 && (
+            <g className="gv-follow-edges">
+              {selectedFollowEdges.map((f) => {
+                const fromNode = built.byUserIndex.get(f.from);
+                const toNode = built.byUserIndex.get(f.to);
+                if (!fromNode || !toNode) return null;
+                const isOut = f.from === selectedUser;
+                const { x1, y1, x2, y2 } = followEdgeEndpoints(fromNode, toNode);
+                return (
+                  <line
+                    key={`follow:${f.from}:${f.to}`}
+                    className={`gv-follow-edge ${isOut ? "out" : "in"}`}
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke={isOut ? FOLLOW_OUT_COLOR : FOLLOW_IN_COLOR}
+                    markerEnd={
+                      isOut
+                        ? "url(#gv-follow-arrow-out)"
+                        : "url(#gv-follow-arrow-in)"
+                    }
+                  />
+                );
+              })}
+            </g>
+          )}
+
           {/* on hover, reveal which homeserver a DHT node belongs to */}
           {hoverNode?.kind === "dht_client" &&
             hoverNode.hs &&
@@ -706,32 +864,56 @@ export function GraphView({
 
           {/* infrastructure nodes */}
           <g className="gv-infra-nodes">
-            {built.infra.map((n) => (
+            {built.infra.map((n) => {
+              const glow = infraHasGlow(n.infra?.kind);
+              return (
               <g
                 key={n.id}
-                className="gv-node infra"
+                className={`gv-node infra ${isLit(n.id) ? "" : "dim"}`}
                 transform={`translate(${n.x} ${n.y})`}
                 onMouseEnter={() => enterHover(n.id)}
                 onMouseLeave={() => leaveHover(n.id)}
               >
-                <InfraShape node={n} />
+                {glow && <NodeGlow id={n.id} r={n.r} color={n.color} />}
+                <InfraShape node={n} elevated={glow} />
+                {n.infra?.kind === "bootstrap" && (
+                  <NodeGlyph
+                    r={n.r}
+                    ink={contrastInk(n.color)}
+                    viewBox={BOOTSTRAP_VIEWBOX}
+                    scale={1.12}
+                  >
+                    <BootstrapPaths />
+                  </NodeGlyph>
+                )}
                 {n.infra?.kind === "dht_peer" && (
                   <NodeGlyph r={n.r} ink={contrastInk(n.color)} viewBox={DHT_VIEWBOX}>
                     <DhtPaths />
                   </NodeGlyph>
                 )}
                 {n.infra?.kind === "pkarr_relay" && (
-                  <NodeGlyph r={n.r} ink={contrastInk(n.color)} viewBox={PKARR_VIEWBOX}>
+                  <NodeGlyph
+                    r={n.r}
+                    ink={infraGlyphInk(n.infra.kind, n.color)}
+                    viewBox={PKARR_VIEWBOX}
+                    scale={1.62}
+                  >
                     <PkarrPaths />
                   </NodeGlyph>
                 )}
                 {n.infra?.kind === "http_relay" && (
-                  <NodeGlyph r={n.r} ink={contrastInk(n.color)} viewBox={HTTP_VIEWBOX}>
+                  <NodeGlyph
+                    r={n.r}
+                    ink={infraGlyphInk(n.infra.kind, n.color)}
+                    viewBox={HTTP_VIEWBOX}
+                    scale={1.62}
+                  >
                     <HttpPaths />
                   </NodeGlyph>
                 )}
               </g>
-            ))}
+              );
+            })}
           </g>
 
           {/* per-homeserver DHT participants (spun up after HS creation) */}
@@ -739,7 +921,9 @@ export function GraphView({
             {built.dhtClients.map((n) => (
               <g
                 key={n.id}
-                className={`gv-node dht_client ${n.hs?.pending ? "pending" : ""}`}
+                className={`gv-node dht_client ${n.hs?.pending ? "pending" : ""} ${
+                  isLit(n.id) ? "" : "dim"
+                }`}
                 transform={`translate(${n.x} ${n.y})`}
                 onMouseEnter={() => enterHover(n.id)}
                 onMouseLeave={() => leaveHover(n.id)}
@@ -768,10 +952,6 @@ export function GraphView({
               }
               const lit = isLit(n.id);
               const active = n.hs?.status === "active";
-              const glowId =
-                n.kind === "hub"
-                  ? `hub-glow-${n.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`
-                  : null;
               const spotlight = isSpotlightOnly(n, expandedHs, spotlightUsers);
               return (
                 <g
@@ -800,36 +980,7 @@ export function GraphView({
                 >
                   {n.kind === "hub" && n.hs ? (
                     <>
-                      <defs>
-                        <radialGradient
-                          id={glowId!}
-                          gradientUnits="userSpaceOnUse"
-                          cx={0}
-                          cy={0}
-                          r={n.r + 34}
-                        >
-                          <stop
-                            offset="0%"
-                            stopColor={darkenHex(n.color, 0.15)}
-                            stopOpacity={0.62}
-                          />
-                          <stop
-                            offset="45%"
-                            stopColor={darkenHex(n.color, 0.35)}
-                            stopOpacity={0.28}
-                          />
-                          <stop
-                            offset="100%"
-                            stopColor={darkenHex(n.color, 0.5)}
-                            stopOpacity={0}
-                          />
-                        </radialGradient>
-                      </defs>
-                      <circle
-                        className="gv-hub-glow"
-                        r={n.r + 34}
-                        fill={`url(#${glowId})`}
-                      />
+                      <NodeGlow id={n.id} r={n.r} color={n.color} />
                       <circle
                         className="gv-hub-core"
                         r={n.r}
@@ -898,42 +1049,6 @@ export function GraphView({
       )}
 
       <div className="gv-controls">
-        <div className={`gv-create-bar ${createOpen ? "open" : ""}`}>
-          <button
-            className="gv-create-toggle"
-            onClick={() => setCreateOpen((o) => !o)}
-            aria-label="Create homeserver"
-            aria-expanded={createOpen}
-            title="Create homeserver"
-          >
-            <PlusIcon />
-          </button>
-          {createOpen && (
-            <div className="gv-create-fields">
-              <span className="gv-create-label">Seed</span>
-              <input
-                ref={seedRef}
-                type="number"
-                min={1}
-                max={23}
-                value={seed}
-                onChange={(e) => setSeed(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitCreate();
-                  if (e.key === "Escape") setCreateOpen(false);
-                }}
-                aria-label="Homeserver seed index"
-              />
-              <button
-                className="gv-create-go"
-                onClick={submitCreate}
-                disabled={busy || !seedValid}
-              >
-                Create
-              </button>
-            </div>
-          )}
-        </div>
         <button
           onClick={() => zoomCenter(1.2)}
           aria-label="Zoom in"
@@ -958,40 +1073,34 @@ export function GraphView({
         </button>
       </div>
 
-      <div className="gv-legend">
-        <span className="gv-legend-infra muted small">
-          <span className="gv-legend-chip" style={{ background: HS_COLOR }} />
-          homeserver
-          <span className="gv-legend-chip" style={{ background: USER_COLOR }} />
-          user
-          <span
-            className="gv-legend-chip"
-            style={{ background: INFRA_COLORS.dht_peer }}
-          />
-          dht
-          <span
-            className="gv-legend-chip"
-            style={{ background: INFRA_COLORS.bootstrap }}
-          />
-          bootstrap
-          <span
-            className="gv-legend-chip"
-            style={{ background: INFRA_COLORS.pkarr_relay }}
-          />
-          pkarr
-          <span
-            className="gv-legend-chip"
-            style={{ background: INFRA_COLORS.http_relay }}
-          />
-          http relay
-        </span>
-        <span className="muted small">
-          {homeservers.length} homeservers ({activeHs} active) · {totalUsers}{" "}
-          users · click a homeserver to expand
-        </span>
+      <div className="gv-timeline">
+        <div className="gv-legend">
+          <div className="gv-legend-items">
+            {LEGEND_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`gv-legend-item${
+                  legendHover === item.id ? " active" : ""
+                }`}
+                onMouseEnter={() => setLegendHover(item.id)}
+                onMouseLeave={() => setLegendHover(null)}
+              >
+                <span
+                  className="gv-legend-chip"
+                  style={{ background: item.color }}
+                />
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <span className="gv-legend-stats muted small">
+            {homeservers.length} homeservers ({activeHs} active) · {totalUsers}{" "}
+            users
+          </span>
+        </div>
+        <Timeline feed={feed} />
       </div>
-
-      <Timeline feed={feed} />
     </div>
   );
 }
@@ -1263,39 +1372,67 @@ function tagColor(label: string): string {
 }
 
 function Timeline({ feed }: { feed: TickEvent[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const data = [...feed].reverse();
   const max = Math.max(
     1,
     ...data.map((d) => d.users + d.posts + d.tags + d.follows)
   );
-  const [hover, setHover] = useState<number | null>(null);
+  const [hover, setHover] = useState<{ index: number; x: number } | null>(
+    null
+  );
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [data.length]);
+
+  const hovered = hover != null ? data[hover.index] : null;
+  const hoveredTotal = hovered
+    ? hovered.users + hovered.posts + hovered.tags + hovered.follows
+    : 0;
+
   return (
-    <div className="gv-timeline">
-      <div className="gv-timeline-bars">
-        {data.length === 0 && (
-          <span className="muted small">Waiting for activity…</span>
-        )}
-        {data.map((d, i) => {
-          const total = d.users + d.posts + d.tags + d.follows;
-          return (
-            <div
-              key={d.tick}
-              className="gv-bar-wrap"
-              onMouseEnter={() => setHover(i)}
-              onMouseLeave={() => setHover((h) => (h === i ? null : h))}
-            >
-              {hover === i && (
-                <div className="gv-bar-tip">
-                  tick {d.tick} · {total} entities
-                </div>
-              )}
+    <div className="gv-timeline-inner" ref={innerRef}>
+      {hover != null && hovered && (
+        <div className="gv-bar-tip" style={{ left: hover.x }}>
+          tick {hovered.tick} · {hoveredTotal} entities
+        </div>
+      )}
+      <div className="gv-timeline-scroll" ref={scrollRef}>
+        <div className="gv-timeline-bars">
+          {data.length === 0 && (
+            <span className="muted small">Waiting for activity…</span>
+          )}
+          {data.map((d, i) => {
+            const total = d.users + d.posts + d.tags + d.follows;
+            return (
               <div
-                className="gv-bar"
-                style={{ height: `${(total / max) * 100}%` }}
-              />
-            </div>
-          );
-        })}
+                key={d.tick}
+                className="gv-bar-wrap"
+                onMouseEnter={(e) => {
+                  const inner = innerRef.current;
+                  if (!inner) return;
+                  const innerRect = inner.getBoundingClientRect();
+                  const wrapRect = e.currentTarget.getBoundingClientRect();
+                  setHover({
+                    index: i,
+                    x: wrapRect.left - innerRect.left + wrapRect.width / 2,
+                  });
+                }}
+                onMouseLeave={() =>
+                  setHover((h) => (h?.index === i ? null : h))
+                }
+              >
+                <div
+                  className="gv-bar"
+                  style={{ height: `${(total / max) * 100}%` }}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

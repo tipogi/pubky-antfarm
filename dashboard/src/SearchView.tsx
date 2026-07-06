@@ -6,6 +6,14 @@ import {
   type FormEvent,
 } from "react";
 import type { Session } from "@synonymdev/pubky";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatContent } from "./eventContentFormat";
 import {
   extractPrivReferences,
@@ -738,25 +746,35 @@ export function SearchView() {
         {events.length > 0 && (
           <div className="search-events-layout">
             <div className="hs-events-records search-events-records">
-              <table className="hs-events-table">
-                <thead>
-                  <tr>
-                    <th>Cursor</th>
-                    <th>Type</th>
-                    <th>Scope</th>
-                    <th>Path</th>
-                    <th>Hash</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table className="table-fixed border-collapse text-xs">
+                <TableHeader>
+                  <TableRow className="border-0 hover:bg-transparent">
+                    <TableHead className="sticky top-0 z-[1] h-auto w-[15%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                      Cursor
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-[1] h-auto w-[8%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                      Type
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-[1] h-auto w-[7%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                      Scope
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-[1] h-auto w-[45%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                      Path
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-[1] h-auto w-[25%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                      Hash
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr:last-child_td]:border-b-0">
                   {events.map((event, index) => {
                     if (!matchesScope(event)) return null;
                     const isPriv = event.scope === "priv";
                     const selected = selectedIndex === index;
                     return (
-                      <tr
+                      <TableRow
                         key={`${event.cursor}-${index}`}
-                        className={`search-row-clickable${isPriv ? " search-row-priv" : ""}${selected ? " search-row-selected" : ""}`}
+                        className={`search-row-clickable border-0 hover:bg-transparent${isPriv ? " search-row-priv" : ""}${selected ? " search-row-selected" : ""}`}
                         onClick={() => selectEvent(index, event)}
                         role="button"
                         tabIndex={0}
@@ -767,42 +785,43 @@ export function SearchView() {
                           }
                         }}
                       >
-                        <td className="hs-events-time" title={event.cursor}>
+                        <TableCell
+                          className="hs-events-time w-[15%] border-b border-white/[0.06] px-2.5 py-2 align-top"
+                          title={event.cursor}
+                        >
                           {event.cursor ?? "—"}
-                        </td>
-                        <td className="hs-events-type">
+                        </TableCell>
+                        <TableCell className="hs-events-type w-[8%] border-b border-white/[0.06] px-2.5 py-2 align-top">
                           <span
                             className={`hs-events-type-badge ${event.eventType === "PUT" ? "put" : "del"}`}
                           >
                             {event.eventType}
                           </span>
-                        </td>
-                        <td className="hs-events-scope">
+                        </TableCell>
+                        <TableCell className="hs-events-scope w-[7%] border-b border-white/[0.06] px-2.5 py-2 align-top">
                           {isPriv ? (
                             <span className="search-priv-badge">priv</span>
                           ) : (
                             <span className="search-pub-badge">pub</span>
                           )}
-                        </td>
-                        <td
-                          className="hs-events-path"
+                        </TableCell>
+                        <TableCell
+                          className="hs-events-path w-[45%] border-b border-white/[0.06] px-2.5 py-2 align-top"
                           title={event.uri}
                         >
                           {shortPath(event.path)}
-                        </td>
-                        <td
-                          className="hs-events-hash"
+                        </TableCell>
+                        <TableCell
+                          className="hs-events-hash w-[25%] border-b border-white/[0.06] px-2.5 py-2 align-top"
                           title={event.contentHash ?? undefined}
                         >
-                          {event.contentHash
-                            ? event.contentHash
-                            : "—"}
-                        </td>
-                      </tr>
+                          {event.contentHash ? event.contentHash : "—"}
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
           </div>

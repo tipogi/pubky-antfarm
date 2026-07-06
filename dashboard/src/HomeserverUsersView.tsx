@@ -4,6 +4,7 @@ import {
   useState,
   type CSSProperties,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { api, type UserStorageStats } from "./api";
 import type { RunAction } from "./App";
@@ -17,6 +18,46 @@ import { loadProfile, loadAvatar, type UserStorageContext } from "./pubky";
 import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
 import type { Homeserver } from "./useDashboard";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  modalContentSm,
+  modalField,
+  modalFooter,
+  modalForm,
+  modalHint,
+  modalInput,
+  modalLabel,
+} from "@/lib/modal-layout";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function shortKey(key: string): string {
   return key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key;
@@ -214,6 +255,37 @@ function HomeserverActionIcon() {
   );
 }
 
+function UserActionTooltipButton({
+  tip,
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  tip: string;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="hs-user-action-trigger"
+          disabled={disabled}
+          onClick={onClick}
+        >
+          <span className="hs-user-action-glyph">{children}</span>
+          <span className="hs-user-action-label">{label}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function UserActionButtons({
   disabled,
   onFollow,
@@ -237,102 +309,70 @@ function UserActionButtons({
 }) {
   return (
     <div className="hs-user-action-btns" role="group" aria-label="User actions">
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+      <UserActionTooltipButton
+        tip="Follow another user"
+        label="Follow"
         disabled={disabled}
         onClick={onFollow}
-        title="Follow another user"
       >
-        <span className="hs-user-action-glyph">
-          <FollowActionIcon />
-        </span>
-        <span className="hs-user-action-label">Follow</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <FollowActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="Tag a user or post"
+        label="Tag"
         disabled={disabled}
         onClick={onTag}
-        title="Tag a user or post"
       >
-        <span className="hs-user-action-glyph">
-          <TagActionIcon />
-        </span>
-        <span className="hs-user-action-label">Tag</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <TagActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="Create a post, mention, or repost"
+        label="Post"
         disabled={disabled}
         onClick={onPost}
-        title="Create a post, mention, or repost"
       >
-        <span className="hs-user-action-glyph">
-          <PostActionIcon />
-        </span>
-        <span className="hs-user-action-label">Post</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <PostActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="Spam random posts and tags"
+        label="Spam"
         disabled={disabled}
         onClick={onBatch}
-        title="Spam random posts and tags"
       >
-        <span className="hs-user-action-glyph">
-          <SpamActionIcon />
-        </span>
-        <span className="hs-user-action-label">Spam</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <SpamActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="View user events"
+        label="Event"
         disabled={disabled}
         onClick={onEvents}
-        title="View user events"
       >
-        <span className="hs-user-action-glyph">
-          <EventActionIcon className="hs-user-action-icon" />
-        </span>
-        <span className="hs-user-action-label">Event</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <EventActionIcon className="hs-user-action-icon" />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="View pkarr record"
+        label="Pkarr"
         disabled={disabled}
         onClick={onPkarr}
-        title="View pkarr record"
       >
-        <span className="hs-user-action-glyph">
-          <PkarrActionIcon />
-        </span>
-        <span className="hs-user-action-label">Pkarr</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <PkarrActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="Change homeserver"
+        label="Homeserver"
         disabled={disabled}
         onClick={onHomeserver}
-        title="Change homeserver"
       >
-        <span className="hs-user-action-glyph">
-          <HomeserverActionIcon />
-        </span>
-        <span className="hs-user-action-label">Homeserver</span>
-      </button>
-      <button
-        type="button"
-        className="hs-user-action-trigger"
+        <HomeserverActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="View recovery phrase (mnemonic)"
+        label="Mnemonic"
         disabled={disabled}
         onClick={onDetails}
-        title="View recovery phrase (mnemonic)"
       >
-        <span className="hs-user-action-glyph">
-          <DetailsActionIcon className="hs-user-action-icon" />
-        </span>
-        <span className="hs-user-action-label">Mnemonic</span>
-      </button>
+        <DetailsActionIcon className="hs-user-action-icon" />
+      </UserActionTooltipButton>
     </div>
   );
 }
@@ -379,88 +419,73 @@ function UserActionModal({
   };
 
   return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="hs-action-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hs-action-modal-head">
-          <div>
-            <h2 id="hs-action-modal-title">{title}</h2>
-            <p className="hs-action-modal-sub">
-              as #{modal.userIndex} · {modal.displayName}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={modalContentSm()}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            as #{modal.userIndex} · {modal.displayName}
+          </DialogDescription>
+        </DialogHeader>
 
-        <form className="hs-action-modal-form" onSubmit={submit}>
-          <div className="hs-modal-panel">
-            <label className="hs-action-modal-field">
-              <span className="hs-action-modal-label">Target pubky</span>
-              <input
-                type="text"
-                className="hs-action-modal-input"
-                placeholder="z32 public key"
-                value={target}
-                onChange={(e) => handleTargetChange(e.target.value)}
-                disabled={busy}
-                spellCheck={false}
-                autoFocus
-              />
-              {!isFollow && targetKey.length > 0 && !keyValid && (
-                <span className="hs-action-modal-hint">
-                  Enter a z32 public key, not a URL
-                </span>
-              )}
-            </label>
-
-            {!isFollow && (
-              <label className="hs-action-modal-field">
-                <span className="hs-action-modal-label">Label</span>
-                <input
-                  type="text"
-                  className="hs-action-modal-input hs-action-modal-input-text"
-                  placeholder="Tag label"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  disabled={busy || !keyValid}
-                  spellCheck={false}
-                />
-              </label>
+        <form onSubmit={submit} className={modalForm()}>
+          <div className={modalField()}>
+            <Label htmlFor="user-action-target" className={modalLabel()}>
+              Target pubky
+            </Label>
+            <Input
+              id="user-action-target"
+              type="text"
+              placeholder="z32 public key"
+              value={target}
+              onChange={(e) => handleTargetChange(e.target.value)}
+              disabled={busy}
+              spellCheck={false}
+              className={modalInput()}
+              autoFocus
+            />
+            {!isFollow && targetKey.length > 0 && !keyValid && (
+              <p className="text-xs leading-snug text-destructive">
+                Enter a z32 public key, not a URL
+              </p>
             )}
           </div>
 
-          <div className="hs-action-modal-foot">
-            <button
+          {!isFollow && (
+            <div className={modalField()}>
+              <Label htmlFor="user-action-label" className={modalLabel()}>
+                Label
+              </Label>
+              <Input
+                id="user-action-label"
+                type="text"
+                placeholder="Tag label"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                disabled={busy || !keyValid}
+                spellCheck={false}
+                className={modalInput()}
+              />
+            </div>
+          )}
+
+          <DialogFooter className={modalFooter()}>
+            <Button
               type="button"
-              className="action"
+              variant="outline"
+              size="sm"
               disabled={busy}
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="action primary"
-              disabled={busy || !canSubmit}
-            >
+            </Button>
+            <Button type="submit" size="sm" disabled={busy || !canSubmit}>
               {isFollow ? "Follow" : "Tag"}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -518,78 +543,72 @@ function ChangeHomeserverModal({
   };
 
   return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal hs-change-hs-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="change-hs-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hs-action-modal-head">
-          <div>
-            <h2 id="change-hs-modal-title">Change homeserver</h2>
-            <p className="hs-action-modal-sub">
-              {kindLabel} · {label}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={modalContentSm()}>
+        <DialogHeader>
+          <DialogTitle>Change homeserver</DialogTitle>
+          <DialogDescription>
+            {kindLabel} · {label}
+          </DialogDescription>
+        </DialogHeader>
 
-        <form className="hs-action-modal-form" onSubmit={submit}>
-          <label className="hs-action-modal-field">
-            <span className="hs-action-modal-label">Target homeserver</span>
-            <select
-              className="hs-action-modal-input hs-pkarr-change-select"
-              value={targetSeed ?? ""}
-              disabled={busy || targetHomeservers.length === 0}
-              onChange={(e) => setTargetSeed(Number(e.target.value))}
-              aria-label="Target homeserver"
-              autoFocus
-            >
-              {targetHomeservers.length === 0 ? (
-                <option value="">No other homeservers</option>
-              ) : (
-                targetHomeservers.map((target) => (
-                  <option key={target.seed} value={target.seed}>
-                    {target.label} (seed {target.seed})
-                  </option>
-                ))
-              )}
-            </select>
-            <span className="hs-action-modal-help">
+        <form onSubmit={submit} className={modalForm()}>
+          <div className={modalField()}>
+            <Label htmlFor="change-hs-target" className={modalLabel()}>
+              Target homeserver
+            </Label>
+            {targetHomeservers.length === 0 ? (
+              <p className={modalHint()}>No other homeservers</p>
+            ) : (
+              <Select
+                value={targetSeed != null ? String(targetSeed) : undefined}
+                disabled={busy}
+                onValueChange={(value) => setTargetSeed(Number(value))}
+              >
+                <SelectTrigger
+                  id="change-hs-target"
+                  aria-label="Target homeserver"
+                  className="h-9"
+                  autoFocus
+                >
+                  <SelectValue placeholder="Select homeserver" />
+                </SelectTrigger>
+                <SelectContent>
+                  {targetHomeservers.map((target) => (
+                    <SelectItem key={target.seed} value={String(target.seed)}>
+                      {target.label} (seed {target.seed})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className={modalHint()}>
               Updates this user&apos;s pkarr record only. Existing data stays on the
               previous homeserver.
-            </span>
-          </label>
+            </p>
+          </div>
 
-          <div className="hs-action-modal-foot">
-            <button
+          <DialogFooter className={modalFooter()}>
+            <Button
               type="button"
-              className="action"
+              variant="outline"
+              size="sm"
               disabled={busy}
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="action primary"
+              size="sm"
               disabled={busy || targetSeed == null || targetHomeservers.length === 0}
             >
               Change homeserver
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -806,16 +825,24 @@ export function HomeserverUsersView({
           </div>
 
           <div className="hs-users-table-wrap">
-            <table className="hs-users-table">
-              <thead>
-                <tr>
-                  <th className="hs-users-th-num">#</th>
-                  <th>User</th>
-                  <th>Storage</th>
-                  <th className="hs-users-th-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="border-collapse text-sm">
+              <TableHeader>
+                <TableRow className="border-b border-border hover:bg-transparent">
+                  <TableHead className="hs-users-th-num h-auto bg-[color-mix(in_srgb,var(--panel-2)_55%,var(--panel))] px-[18px] py-3 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted-foreground">
+                    #
+                  </TableHead>
+                  <TableHead className="h-auto bg-[color-mix(in_srgb,var(--panel-2)_55%,var(--panel))] px-[18px] py-3 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted-foreground">
+                    User
+                  </TableHead>
+                  <TableHead className="h-auto bg-[color-mix(in_srgb,var(--panel-2)_55%,var(--panel))] px-[18px] py-3 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted-foreground">
+                    Storage
+                  </TableHead>
+                  <TableHead className="hs-users-th-actions h-auto bg-[color-mix(in_srgb,var(--panel-2)_55%,var(--panel))] px-[18px] py-3 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-muted-foreground">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="[&_tr:first-child_td]:border-t-0">
                 {hs.users.map((user) => {
                   const row = rows[user.index];
                   const storage = row?.storage;
@@ -824,11 +851,14 @@ export function HomeserverUsersView({
                   const displayName = row?.displayName ?? user.name;
 
                   return (
-                    <tr key={user.index}>
-                      <td className="hs-users-num">
+                    <TableRow
+                      key={user.index}
+                      className="border-0 transition-colors hover:bg-[color-mix(in_srgb,var(--hs-accent,var(--accent))_7%,transparent)]"
+                    >
+                      <TableCell className="hs-users-num w-14 whitespace-nowrap border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-[18px] py-3">
                         <span className="hs-users-rank">{user.index}</span>
-                      </td>
-                      <td className="hs-users-id">
+                      </TableCell>
+                      <TableCell className="hs-users-id whitespace-nowrap border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-[18px] py-3">
                         <div className="hs-users-id-cell">
                           <UserAvatar
                             publicKey={user.publicKey}
@@ -850,15 +880,15 @@ export function HomeserverUsersView({
                             </button>
                           </div>
                         </div>
-                      </td>
-                      <td className="hs-users-storage">
+                      </TableCell>
+                      <TableCell className="hs-users-storage whitespace-nowrap border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-[18px] py-3">
                         <StorageCell
                           used={used}
                           quotaMb={quotaMb}
                           loading={storageLoading && !storage}
                         />
-                      </td>
-                      <td className="hs-users-actions">
+                      </TableCell>
+                      <TableCell className="hs-users-actions whitespace-nowrap border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-[18px] py-3">
                         <UserActionButtons
                           disabled={busy}
                           onFollow={() => openModal("follow", user.index, displayName)}
@@ -880,12 +910,12 @@ export function HomeserverUsersView({
                             openDetailsModal(user.index, displayName, user.publicKey)
                           }
                         />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </>
       )}

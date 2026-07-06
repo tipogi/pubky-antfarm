@@ -1,6 +1,29 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
 import type { RunAction } from "./App";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
+import {
+  modalContentSm,
+  modalField,
+  modalFooter,
+  modalForm,
+  modalHint,
+  modalInput,
+  modalLabel,
+  modalRadioOptionCompact,
+} from "@/lib/modal-layout";
 
 export type SocialPostKind = "short" | "mention" | "repost" | "repost_mention";
 
@@ -68,150 +91,116 @@ export function SocialPostModal({
     });
   };
 
-  return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="hs-social-post-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hs-action-modal-head">
-          <div>
-            <h2 id="hs-social-post-modal-title">Create</h2>
-            <p className="hs-action-modal-sub">
-              as #{userIndex} · {displayName}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+  const postTypes = [
+    { value: "short" as const, title: "Short post" },
+    { value: "mention" as const, title: "Mention" },
+    { value: "repost" as const, title: "Repost" },
+    { value: "repost_mention" as const, title: "Repost + mention" },
+  ];
 
-        <form className="hs-action-modal-form" onSubmit={submit}>
-          <div className="hs-modal-panel">
-            <fieldset className="hs-action-modal-field hs-radio-group">
-              <legend className="hs-action-modal-label">Post type</legend>
-              <label className="hs-radio-option">
-                <input
-                  type="radio"
-                  name="social-post-kind"
-                  value="short"
-                  checked={kind === "short"}
-                  disabled={busy}
-                  onChange={() => setKind("short")}
-                />
-                <span className="hs-radio-text">Short post</span>
-              </label>
-              <label className="hs-radio-option">
-                <input
-                  type="radio"
-                  name="social-post-kind"
-                  value="mention"
-                  checked={kind === "mention"}
-                  disabled={busy}
-                  onChange={() => setKind("mention")}
-                />
-                <span className="hs-radio-text">Mention</span>
-              </label>
-              <label className="hs-radio-option">
-                <input
-                  type="radio"
-                  name="social-post-kind"
-                  value="repost"
-                  checked={kind === "repost"}
-                  disabled={busy}
-                  onChange={() => setKind("repost")}
-                />
-                <span className="hs-radio-text">Repost</span>
-              </label>
-              <label className="hs-radio-option">
-                <input
-                  type="radio"
-                  name="social-post-kind"
-                  value="repost_mention"
-                  checked={kind === "repost_mention"}
-                  disabled={busy}
-                  onChange={() => setKind("repost_mention")}
-                />
-                <span className="hs-radio-text">Repost + mention</span>
-              </label>
-            </fieldset>
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={modalContentSm()}>
+        <DialogHeader className="pb-2">
+          <DialogTitle>Create</DialogTitle>
+          <DialogDescription>
+            as #{userIndex} · {displayName}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={submit} className={modalForm()}>
+          <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+            <legend className={cn(modalLabel(), "mb-0")}>Post type</legend>
+            <RadioGroup
+              value={kind}
+              onValueChange={(v) => setKind(v as SocialPostKind)}
+              disabled={busy}
+            >
+              {postTypes.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={modalRadioOptionCompact(kind === opt.value)}
+                >
+                  <RadioGroupItem
+                    value={opt.value}
+                    id={`post-kind-${opt.value}`}
+                  />
+                  <span className="text-[13px] font-semibold leading-none">
+                    {opt.title}
+                  </span>
+                </label>
+              ))}
+            </RadioGroup>
 
             {kind === "short" && (
-              <p className="hs-action-modal-help">
-                Publishes a short post with random generated content.
-              </p>
+              <p className={modalHint()}>Publishes a short post with random generated content.</p>
             )}
 
             {(kind === "mention" || kind === "repost_mention") && (
-              <label className="hs-action-modal-field">
-                <span className="hs-action-modal-label">Mention user key</span>
-                <input
+              <div className={modalField()}>
+                <Label htmlFor="social-mention-key" className={modalLabel()}>
+                  Mention user key
+                </Label>
+                <Input
+                  id="social-mention-key"
                   type="text"
-                  className="hs-action-modal-input"
                   placeholder="z32 public key"
                   value={mentionKey}
                   onChange={(e) => setMentionKey(e.target.value)}
                   disabled={busy}
                   spellCheck={false}
+                  className={modalInput()}
                   autoFocus
                 />
                 {mentionKey.trim().length > 0 && !mentionValid && (
-                  <span className="hs-action-modal-hint">
+                  <p className="text-xs leading-snug text-destructive">
                     Enter a z32 public key, not a URL
-                  </span>
+                  </p>
                 )}
-              </label>
+              </div>
             )}
 
             {(kind === "repost" || kind === "repost_mention") && (
-              <label className="hs-action-modal-field">
-                <span className="hs-action-modal-label">Post URI</span>
-                <input
+              <div className={modalField()}>
+                <Label htmlFor="social-post-uri" className={modalLabel()}>
+                  Post URI
+                </Label>
+                <Input
+                  id="social-post-uri"
                   type="text"
-                  className="hs-action-modal-input"
                   placeholder="pubky://…/pub/pubky.app/posts/…"
                   value={postUri}
                   onChange={(e) => setPostUri(e.target.value)}
                   disabled={busy}
                   spellCheck={false}
+                  className={modalInput()}
                   autoFocus={kind === "repost"}
                 />
                 {postUri.trim().length > 0 && !postUriValid && (
-                  <span className="hs-action-modal-hint">
+                  <p className="text-xs leading-snug text-destructive">
                     Must be a pubky.app post URI
-                  </span>
+                  </p>
                 )}
-              </label>
+              </div>
             )}
-          </div>
+          </fieldset>
 
-          <div className="hs-action-modal-foot">
-            <button
+          <DialogFooter className={modalFooter()}>
+            <Button
               type="button"
-              className="action"
+              variant="outline"
+              size="sm"
               disabled={busy}
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="action primary"
-              disabled={busy || !canSubmit}
-            >
+            </Button>
+            <Button type="submit" size="sm" disabled={busy || !canSubmit}>
               Create
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

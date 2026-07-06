@@ -1,6 +1,26 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
 import type { RunAction } from "./App";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import {
+  modalContentSm,
+  modalFooter,
+  modalForm,
+  modalHint,
+  modalInput,
+} from "@/lib/modal-layout";
 
 const MAX_BATCH = 100;
 
@@ -30,29 +50,34 @@ function BatchRow({
   const countValid = !enabled || parseCount(value) !== null;
 
   return (
-    <div className={`hs-batch-row ${enabled ? "enabled" : ""}`}>
-      <label className="hs-batch-row-check" htmlFor={`${id}-enabled`}>
-        <input
-          id={`${id}-enabled`}
-          type="checkbox"
-          checked={enabled}
-          disabled={disabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-        />
-        <span className="hs-batch-row-label">{label}</span>
-      </label>
-      <input
+    <div className="flex items-center gap-2.5 py-1">
+      <Checkbox
+        id={`${id}-enabled`}
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={(checked) => onEnabledChange(checked === true)}
+      />
+      <Label
+        htmlFor={`${id}-enabled`}
+        className="min-w-[4rem] cursor-pointer text-[13px] font-medium"
+      >
+        {label}
+      </Label>
+      <Input
         id={`${id}-count`}
         type="number"
         min={1}
         max={MAX_BATCH}
-        className="hs-batch-row-input"
         value={value}
         disabled={disabled || !enabled}
         onChange={(e) => onChange(e.target.value)}
+        className={cn(modalInput(), "max-w-[100px]")}
+        aria-describedby={!countValid && enabled ? `${id}-hint` : undefined}
       />
       {!countValid && enabled && (
-        <span className="hs-batch-row-hint">1–{MAX_BATCH}</span>
+        <span id={`${id}-hint`} className={modalHint()}>
+          1–{MAX_BATCH}
+        </span>
       )}
     </div>
   );
@@ -99,33 +124,17 @@ export function BatchEventsModal({
   };
 
   return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal hs-batch-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="hs-batch-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hs-action-modal-head">
-          <div>
-            <h2 id="hs-batch-modal-title">Spam</h2>
-            <p className="hs-action-modal-sub">
-              as #{userIndex} · {displayName}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={modalContentSm()}>
+        <DialogHeader>
+          <DialogTitle>Spam</DialogTitle>
+          <DialogDescription>
+            as #{userIndex} · {displayName}
+          </DialogDescription>
+        </DialogHeader>
 
-        <form className="hs-action-modal-form" onSubmit={submit}>
-          <div className="hs-batch-rows">
+        <form onSubmit={submit} className={modalForm()}>
+          <div className="flex flex-col gap-2">
             <BatchRow
               id="batch-posts"
               label="Posts"
@@ -146,16 +155,22 @@ export function BatchEventsModal({
             />
           </div>
 
-          <div className="hs-action-modal-foot">
-            <button type="button" className="action" disabled={busy} onClick={onClose}>
+          <DialogFooter className={modalFooter()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={onClose}
+            >
               Cancel
-            </button>
-            <button type="submit" className="action primary" disabled={!canSubmit}>
+            </Button>
+            <Button type="submit" size="sm" disabled={!canSubmit}>
               Spam
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

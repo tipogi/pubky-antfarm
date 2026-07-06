@@ -1,6 +1,32 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
+import {
+  modalCheckboxRow,
+  modalContentSm,
+  modalField,
+  modalFooter,
+  modalForm,
+  modalHint,
+  modalInput,
+  modalLabel,
+  modalRadioOption,
+} from "@/lib/modal-layout";
 import { hubColorFor } from "./hubColors";
 import { ROOT_VIEWBOX, RootPaths } from "./RootMark";
+import type { CSSProperties } from "react";
 
 type HomeserverStart = "dormant" | "active";
 
@@ -81,15 +107,10 @@ export function CreateHomeserverModal({
   const [seed, setSeed] = useState(String(nextIndex));
   const [start, setStart] = useState<HomeserverStart>("dormant");
   const [island, setIsland] = useState(false);
-  const seedRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSeed(String(nextIndex));
   }, [nextIndex]);
-
-  useEffect(() => {
-    seedRef.current?.focus();
-  }, []);
 
   const seedNum = Number(seed);
   const seedValid = Number.isInteger(seedNum) && seedNum >= 1 && seedNum <= 23;
@@ -97,130 +118,118 @@ export function CreateHomeserverModal({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (busy || !seedValid) return;
-
-    // Close immediately; an optimistic node appears and the result arrives as a
-    // toast notification.
     onClose();
     onCreate(seedNum, island, start === "active");
   };
 
   return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-hs-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hs-action-modal-head">
-          <div>
-            <h2 id="create-hs-modal-title">Create homeserver</h2>
-            <p className="hs-action-modal-sub">
-              Adds hs{seedValid ? seedNum + 1 : "?"} to the testnet
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={modalContentSm()}>
+        <DialogHeader>
+          <DialogTitle>Create homeserver</DialogTitle>
+          <DialogDescription>
+            Adds hs{seedValid ? seedNum + 1 : "?"} to the testnet
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={submit} className={modalForm()}>
+          <div className={modalField()}>
+            <Label htmlFor="create-hs-seed" className={modalLabel()}>
+              Seed index
+            </Label>
+            <Input
+              id="create-hs-seed"
+              type="number"
+              min={1}
+              max={23}
+              value={seed}
+              onChange={(e) => setSeed(e.target.value)}
+              disabled={busy}
+              aria-describedby="create-hs-seed-hint"
+              className={cn(modalInput(), "max-w-[120px] font-mono")}
+              autoFocus
+            />
+            <p id="create-hs-seed-hint" className={modalHint()}>
+              Index 1–23 · seed 0 is reserved for hs1
             </p>
           </div>
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
 
-        <form className="hs-action-modal-form" onSubmit={submit}>
-          <div className="hs-modal-panel">
-            <label className="hs-action-modal-field">
-              <span className="hs-action-modal-label">Seed index</span>
-              <input
-                ref={seedRef}
-                type="number"
-                className="hs-action-modal-input"
-                min={1}
-                max={23}
-                value={seed}
-                onChange={(e) => setSeed(e.target.value)}
-                disabled={busy}
-                aria-describedby="create-hs-seed-hint"
-              />
-              <span id="create-hs-seed-hint" className="hs-action-modal-help">
-                Index 1–23 · seed 0 is reserved for hs1
-              </span>
-            </label>
-          </div>
-
-          <fieldset className="hs-action-modal-field hs-radio-group hs-modal-panel">
-            <legend className="hs-action-modal-label">Simulator status</legend>
-            <label className="hs-radio-option">
-              <input
-                type="radio"
-                name="hs-start"
-                value="dormant"
-                checked={start === "dormant"}
-                onChange={() => setStart("dormant")}
-                disabled={busy}
-              />
-              <span className="hs-radio-text">
-                <strong>Dormant</strong>
-                <span className="hs-radio-desc">
-                  Reachable via DHT, no simulated activity
-                </span>
-              </span>
-            </label>
-            <label className="hs-radio-option">
-              <input
-                type="radio"
-                name="hs-start"
-                value="active"
-                checked={start === "active"}
-                onChange={() => setStart("active")}
-                disabled={busy}
-              />
-              <span className="hs-radio-text">
-                <strong>Active</strong>
-                <span className="hs-radio-desc">
-                  Join the simulator rotation immediately
-                </span>
-              </span>
-            </label>
+          <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
+            <legend className={cn(modalLabel(), "mb-0")}>
+              Simulator status
+            </legend>
+            <RadioGroup
+              value={start}
+              onValueChange={(v) => setStart(v as HomeserverStart)}
+              disabled={busy}
+            >
+              {(
+                [
+                  {
+                    value: "dormant" as const,
+                    title: "Dormant",
+                    desc: "Reachable via DHT, no simulated activity",
+                  },
+                  {
+                    value: "active" as const,
+                    title: "Active",
+                    desc: "Join the simulator rotation immediately",
+                  },
+                ] as const
+              ).map((opt) => (
+                <label
+                  key={opt.value}
+                  className={modalRadioOption(start === opt.value)}
+                >
+                  <RadioGroupItem
+                    value={opt.value}
+                    id={`hs-start-${opt.value}`}
+                    className="mt-px"
+                  />
+                  <span className="grid min-w-0 gap-0.5">
+                    <span className="text-[13px] font-semibold leading-tight">
+                      {opt.title}
+                    </span>
+                    <span className={modalHint()}>{opt.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </RadioGroup>
           </fieldset>
 
-          <label className="hs-batch-row hs-create-user-profile hs-island-option enabled">
-            <span className="hs-batch-row-check">
-              <input
-                type="checkbox"
+          <label className={cn(modalCheckboxRow(), "cursor-pointer")}>
+            <span className="flex items-center gap-2">
+              <Checkbox
+                id="create-hs-island"
                 checked={island}
                 disabled={busy}
-                onChange={(e) => setIsland(e.target.checked)}
+                onCheckedChange={(checked) => setIsland(checked === true)}
               />
-              <span className="hs-batch-row-label">Island (isolated)</span>
+              <span className="text-[13px] font-semibold leading-tight">
+                Island (isolated)
+              </span>
             </span>
-            <span className="hs-create-user-profile-hint">
-              Other users can't follow or tag this homeserver's users
+            <span className={cn(modalHint(), "pl-[22px]")}>
+              Other users can&apos;t follow or tag this homeserver&apos;s users
             </span>
           </label>
 
-          <div className="hs-action-modal-foot">
-            <button
+          <DialogFooter className={modalFooter()}>
+            <Button
               type="button"
-              className="action"
+              variant="outline"
+              size="sm"
               disabled={busy}
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="action primary"
-              disabled={busy || !seedValid}
-            >
+            </Button>
+            <Button type="submit" size="sm" disabled={busy || !seedValid}>
               Create
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
