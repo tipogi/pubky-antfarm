@@ -8,7 +8,8 @@ export interface TickEvent {
   follows: number;
 }
 
-const MAX_FEED = 30;
+/** Recent simulator ticks kept for the graph timeline and analytics feed. */
+const MAX_FEED = 160;
 
 /**
  * Subscribe to the per-tick simulator activity SSE stream, keeping the most

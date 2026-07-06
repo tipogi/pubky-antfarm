@@ -1,15 +1,28 @@
 import { useState, type FormEvent } from "react";
+import { Key } from "lucide-react";
 import { api } from "./api";
 import type { RunAction } from "./App";
 import type { Homeserver } from "./useDashboard";
-
-function KeyIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4" />
-    </svg>
-  );
-}
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import {
+  modalCheckboxRow,
+  modalContentSm,
+  modalFooter,
+  modalForm,
+  modalHelpText,
+  modalHint,
+} from "@/lib/modal-layout";
 
 export function CreateUserModal({
   hs,
@@ -31,8 +44,6 @@ export function CreateUserModal({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (busy || atCapacity) return;
-
-    // Close immediately; the result arrives as a toast notification.
     onClose();
     onAction(
       () => api.addUser(hs.seed, withProfile),
@@ -41,86 +52,69 @@ export function CreateUserModal({
   };
 
   return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-user-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hs-action-modal-head">
-          <div>
-            <h2 id="create-user-modal-title">Create user</h2>
-            <p className="hs-action-modal-sub">
-              on {hs.label} · seed {hs.seed}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={modalContentSm()}>
+        <DialogHeader>
+          <DialogTitle>Create user</DialogTitle>
+          <DialogDescription>
+            on {hs.label} · seed {hs.seed}
+          </DialogDescription>
+        </DialogHeader>
 
-        <form className="hs-action-modal-form" onSubmit={submit}>
-          <div className="hs-modal-panel hs-create-user-panel">
-            <p className="hs-create-user-copy muted">
-              Signs up a new pubky key on this homeserver and publishes its pkarr
-              record — useful for testing external apps against these keys.
-            </p>
+        <form onSubmit={submit} className={modalForm()}>
+          <p className={modalHelpText()}>
+            Signs up a new pubky key on this homeserver and publishes its pkarr
+            record — useful for testing external apps against these keys.
+          </p>
 
-            <label className="hs-batch-row enabled hs-create-user-profile">
-              <span className="hs-batch-row-check">
-                <input
-                  id="create-user-profile"
-                  type="checkbox"
-                  checked={withProfile}
-                  disabled={busy || atCapacity}
-                  onChange={(e) => setWithProfile(e.target.checked)}
-                />
-                <span className="hs-batch-row-label">With profile</span>
+          <label className={cn(modalCheckboxRow(), "cursor-pointer")}>
+            <span className="flex items-start gap-2.5">
+              <Checkbox
+                id="create-user-profile"
+                checked={withProfile}
+                disabled={busy || atCapacity}
+                onCheckedChange={(checked) => setWithProfile(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="grid min-w-0 gap-0.5">
+                <Label
+                  htmlFor="create-user-profile"
+                  className="cursor-pointer text-[13px] font-semibold leading-tight text-foreground"
+                >
+                  With profile
+                </Label>
+                <span className={modalHint()}>
+                  Writes profile.json and avatar to the homeserver
+                </span>
               </span>
-              <span className="hs-create-user-profile-hint">
-                Writes profile.json and avatar to the homeserver
-              </span>
-            </label>
+            </span>
+          </label>
 
-            {atCapacity && (
-              <p className="hs-create-user-warn">
-                Homeserver is at capacity ({hs.userCount} / {maxUsers}). Stop
-                the simulator or raise the limit before adding users.
-              </p>
-            )}
-          </div>
+          {atCapacity && (
+            <p className="text-xs leading-snug text-destructive">
+              Homeserver is at capacity ({hs.userCount} / {maxUsers}). Stop the
+              simulator or raise the limit before adding users.
+            </p>
+          )}
 
-          <div className="hs-action-modal-foot">
-            <button type="button" className="action" disabled={busy} onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="action primary"
-              disabled={busy || atCapacity}
+          <DialogFooter className={modalFooter()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={onClose}
             >
-              <KeyIcon className="hs-create-user-submit-icon" />
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={busy || atCapacity}>
+              <Key className="h-4 w-4" />
               Create key
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path d="M12 5v14M5 12h14" />
-    </svg>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -139,7 +133,9 @@ export function AddUserKeyButton({
       onClick={onClick}
       title="Create a new user key"
     >
-      <PlusIcon className="hs-link-icon" />
+      <svg viewBox="0 0 24 24" className="hs-link-icon" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
       key
     </button>
   );

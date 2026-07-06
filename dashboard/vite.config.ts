@@ -1,7 +1,12 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @synonymdev/pkarr ships a Node-only bundle (CJS exports + fs.readFileSync). */
 function pkarrBrowser(): Plugin {
@@ -32,12 +37,13 @@ wasm.__wbindgen_start();
 // The antfarm dashboard API runs on 127.0.0.1:6400 (config: dashboard_addr).
 // Proxy /api there so the SPA and the SSE stream share an origin in dev.
 export default defineConfig({
-  plugins: [pkarrBrowser(), wasm(), topLevelAwait(), react()],
+  plugins: [pkarrBrowser(), tailwindcss(), wasm(), topLevelAwait(), react()],
   optimizeDeps: {
     exclude: ["@synonymdev/pkarr"],
   },
   resolve: {
     alias: {
+      "@": path.resolve(__dirname, "./src"),
       "@synonymdev/pkarr": "@synonymdev/pkarr/index.js",
     },
   },

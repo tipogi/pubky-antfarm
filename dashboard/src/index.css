@@ -1,0 +1,98 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.shadcn-ui *));
+
+/* Non-conflicting tokens for Tailwind utilities (legacy owns --muted and --accent). */
+:root {
+  --background: #0d0d0d;
+  --foreground: #ffffff;
+  --card: #161616;
+  --card-foreground: #ffffff;
+  --popover: #161616;
+  --popover-foreground: #ffffff;
+  --primary: #fefa3d;
+  --primary-foreground: #0d0d0d;
+  --secondary: #1f1f1f;
+  --secondary-foreground: #ffffff;
+  --muted-foreground: #8a8a8a;
+  --destructive: #ff5de7;
+  --destructive-foreground: #0d0d0d;
+  --border: #2b2b2b;
+  --input: #2b2b2b;
+  --ring: #fefa3d;
+  --radius: 0.75rem;
+  --priv: #c4a8ff;
+  --status-online: #fefa3d;
+  --status-offline: #5a5a5a;
+  --status-info: #6db5ff;
+  --font-sans: "Outfit", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Full shadcn token set — scoped so legacy --muted/--accent semantics stay intact. */
+.shadcn-ui {
+  --background: #0d0d0d;
+  --foreground: #ffffff;
+  --card: #161616;
+  --card-foreground: #ffffff;
+  --popover: #161616;
+  --popover-foreground: #ffffff;
+  --primary: #fefa3d;
+  --primary-foreground: #0d0d0d;
+  --secondary: #1f1f1f;
+  --secondary-foreground: #ffffff;
+  --muted: #1f1f1f;
+  --muted-foreground: #8a8a8a;
+  --accent: #1f1f1f;
+  --accent-foreground: #ffffff;
+  --destructive: #ff5de7;
+  --destructive-foreground: #0d0d0d;
+  --border: #2b2b2b;
+  --input: #2b2b2b;
+  --ring: #fefa3d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted, #1f1f1f);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent, #1f1f1f);
+  --color-accent-foreground: var(--accent-foreground, #ffffff);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-priv: var(--priv);
+  --color-status-online: var(--status-online);
+  --color-status-offline: var(--status-offline);
+  --color-status-info: var(--status-info);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  .shadcn-ui *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}

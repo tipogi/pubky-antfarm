@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
+import { hubColorFor } from "./hubColors";
 import { formatContent } from "./eventContentFormat";
 import {
   loadEventContent,
@@ -7,7 +8,21 @@ import {
   type EventContentResult,
   type UserEvent,
 } from "./pubky";
-import { hubColorFor } from "./hubColors";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  modalBody,
+  modalContentWide,
+  modalFooterWide,
+  modalHeaderWide,
+} from "@/lib/modal-layout";
 
 function EyeIcon({ className }: { className?: string }) {
   return (
@@ -52,7 +67,6 @@ export function UserEventsModal({
   kindLabel?: string;
   onClose: () => void;
 }) {
-  const { color } = hubColorFor(seed);
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<UserEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +95,6 @@ export function UserEventsModal({
     };
   }, [userPk, homeserverUrl]);
 
-  // Reset any open content view when the underlying user/homeserver changes.
   useEffect(() => {
     setOpenRow(null);
     setContentByRow({});
@@ -101,6 +114,8 @@ export function UserEventsModal({
     }
   };
 
+  const { color } = hubColorFor(seed);
+
   const countLabel = loading
     ? "Loading…"
     : events && events.length > 0
@@ -108,51 +123,39 @@ export function UserEventsModal({
       : "No events";
 
   return (
-    <div className="hs-action-modal-overlay" onClick={onClose}>
-      <div
-        className="hs-action-modal hs-events-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="user-events-modal-title"
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className={modalContentWide("hs-events-modal sm:max-w-[920px]")}
         aria-busy={loading}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="hs-action-modal-head hs-events-modal-head"
+        <DialogHeader
+          className={modalHeaderWide("hs-events-modal-head border-b-0")}
           style={{ "--hs-accent": color } as CSSProperties}
         >
           <div className="hs-events-head-main">
             <span className="hs-events-head-icon" aria-hidden>
               <EventActionIcon className="hs-events-head-icon-svg" />
             </span>
-
             <div className="hs-events-head-body">
               <div className="hs-events-head-title-row">
-                <h2 id="user-events-modal-title">{label}</h2>
+                <DialogTitle>{label}</DialogTitle>
                 <span
                   className={`hs-events-head-badge${loading ? " loading" : events?.length ? " ok" : ""}`}
                 >
                   {countLabel}
                 </span>
               </div>
-              <p className="hs-events-head-kind">{kindLabel}</p>
+              <DialogDescription className="hs-events-head-kind">
+                {kindLabel}
+              </DialogDescription>
               {!loading && error && (
                 <p className="hs-events-head-error">{error}</p>
               )}
             </div>
           </div>
+        </DialogHeader>
 
-          <button
-            type="button"
-            className="close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="hs-action-modal-form hs-events-modal-body">
+        <div className={modalBody("hs-events-modal-body px-6 pb-4 pt-3")}>
           {loading ? (
             <p className="hs-events-loading muted">
               Fetching up to {USER_EVENTS_PAGE_SIZE} events from homeserver…
@@ -188,7 +191,10 @@ export function UserEventsModal({
                                 {event.type}
                               </span>
                             </td>
-                            <td className="hs-events-path" title={event.uri}>
+                            <td
+                              className="hs-events-path overflow-hidden text-ellipsis whitespace-nowrap"
+                              title={event.uri}
+                            >
                               {shortPath(event.path)}
                             </td>
                             <td
@@ -252,14 +258,14 @@ export function UserEventsModal({
               {error ?? "No events for this user yet."}
             </p>
           )}
-
-          <div className="hs-action-modal-foot">
-            <button type="button" className="action" onClick={onClose}>
-              Close
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+
+        <DialogFooter className={modalFooterWide("justify-end")}>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
