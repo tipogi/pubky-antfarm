@@ -68,4 +68,12 @@ impl SessionCache {
     pub fn invalidate(&self, index: usize) {
         self.inner.lock().unwrap().remove(&index);
     }
+
+    /// Drop cached sessions for many user indices at once (e.g. when a homeserver stops).
+    pub fn invalidate_many(&self, indices: impl IntoIterator<Item = usize>) {
+        let mut map = self.inner.lock().unwrap();
+        for index in indices {
+            map.remove(&index);
+        }
+    }
 }

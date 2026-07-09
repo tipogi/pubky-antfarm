@@ -295,6 +295,15 @@
   opacity: 0.55;
   filter: saturate(0.5);
 }
+/* Process stopped: further dim hub and its DHT participant */
+.gv-node.hub.down {
+  opacity: 0.38;
+  filter: saturate(0.35);
+}
+.gv-dht-clients .gv-node.dht_client.down {
+  opacity: 0.35;
+  filter: saturate(0.35);
+}
 .gv-hub-root {
   overflow: visible;
 }

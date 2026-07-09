@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   ENTITY_KEYS,
   ENTITY_META,
@@ -84,17 +84,30 @@ function Sparkline({
   );
 }
 
-function ActivityStreamChart({ feed }: { feed: TickEvent[] }) {
+function ActivityStreamChart({
+  feed,
+  noActiveHomeservers,
+}: {
+  feed: TickEvent[];
+  noActiveHomeservers: boolean;
+}) {
   const data = useMemo(() => [...feed].reverse(), [feed]);
   const max = Math.max(1, ...data.map(tickTotal));
+  const allIdle = data.length > 0 && data.every((tick) => tickTotal(tick) === 0);
   const [hover, setHover] = useState<number | null>(null);
+
+  const subtitle = noActiveHomeservers
+    ? "No homeservers in simulator rotation — seed one to generate activity"
+    : allIdle
+      ? `Last ${data.length} ticks · simulator running, no entities created yet`
+      : `Last ${data.length} simulator ticks · stacked by entity`;
 
   return (
     <section className="an-card an-stream">
       <header className="an-card-head">
         <div>
           <h2>Activity stream</h2>
-          <p className="an-card-sub">Last {data.length || 0} simulator ticks · stacked by entity</p>
+          <p className={`an-card-sub${noActiveHomeservers ? " warn" : ""}`}>{subtitle}</p>
         </div>
         <div className="an-legend">
           {ENTITY_KEYS.map((key) => (
@@ -137,20 +150,26 @@ function ActivityStreamChart({ feed }: { feed: TickEvent[] }) {
                   </div>
                 )}
                 <div
-                  className="an-stream-stack"
-                  style={{ height: `${(total / max) * 100}%` }}
+                  className={`an-stream-stack${total === 0 ? " idle" : ""}`}
+                  style={{
+                    height: total > 0 ? `${(total / max) * 100}%` : "10%",
+                  }}
                 >
-                  {ENTITY_KEYS.map((key) =>
-                    tick[key] > 0 ? (
-                      <div
-                        key={key}
-                        className="an-stream-seg"
-                        style={{
-                          flexGrow: tick[key],
-                          background: ENTITY_META[key].color,
-                        }}
-                      />
-                    ) : null
+                  {total === 0 ? (
+                    <div className="an-stream-seg an-stream-idle" />
+                  ) : (
+                    ENTITY_KEYS.map((key) =>
+                      tick[key] > 0 ? (
+                        <div
+                          key={key}
+                          className="an-stream-seg"
+                          style={{
+                            flexGrow: tick[key],
+                            background: ENTITY_META[key].color,
+                          }}
+                        />
+                      ) : null
+                    )
                   )}
                 </div>
               </div>
@@ -174,7 +193,7 @@ function EntityMixRing({ feed }: { feed: TickEvent[] }) {
       ),
     [feed]
   );
-  const sum = ENTITY_KEYS.reduce((acc, key) => acc + totals[key], 0) || 1;
+  const sum = ENTITY_KEYS.reduce((acc, key) => acc + totals[key], 0);
   const empty = feed.length === 0 || sum === 0;
   let offset = 0;
   const radius = 42;
@@ -186,7 +205,7 @@ function EntityMixRing({ feed }: { feed: TickEvent[] }) {
         <circle cx="50" cy="50" r={radius} className="an-mix-track" />
         {!empty &&
           ENTITY_KEYS.map((key) => {
-            const fraction = totals[key] / sum;
+            const fraction = totals[key] / (sum || 1);
             const dash = fraction * circumference;
             const circle = (
               <circle
@@ -213,7 +232,7 @@ function EntityMixRing({ feed }: { feed: TickEvent[] }) {
           <li key={key}>
             <span className="an-legend-swatch" style={{ background: ENTITY_META[key].color }} />
             <span>{ENTITY_META[key].label}</span>
-            <strong>{Math.round((totals[key] / sum) * 100)}%</strong>
+            <strong>{empty ? "—" : `${Math.round((totals[key] / sum) * 100)}%`}</strong>
           </li>
         ))}
       </ul>
@@ -245,9 +264,11 @@ function HubLoadPanel({
       <ul className="an-hub-list">
         {sorted.map((hs, index) => {
           const color = HUB_YELLOWS[index % HUB_YELLOWS.length];
-          const pct = (hs.userCount / peak) * 100;
-          const capPct =
-            maxUsers > 0 ? Math.min(100, (hs.userCount / maxUsers) * 100) : null;
+          const pct =
+            maxUsers > 0
+              ? Math.min(100, (hs.userCount / maxUsers) * 100)
+              : (hs.userCount / peak) * 100;
+          const capPct = maxUsers > 0 ? pct : null;
           const leader = hs.userCount === peak && hs.userCount > 0;
           return (
             <li key={hs.label}>
@@ -536,32 +557,41 @@ export function AnalyticsView({
   const active = homeservers.filter((hs) => hs.status === "active").length;
   const totalUsers = homeservers.reduce((sum, hs) => sum + hs.userCount, 0);
   const rate = entitiesPerMinute(feed, simulator.intervalSecs);
-  const crossFollows = state.follows?.length ?? 0;
+  const crossHubEdges = edges?.length ?? 0;
+  const noActiveHomeservers = active === 0;
 
-  const [history, setHistory] = useState<Record<string, number[]>>(() => ({
-    ticks: [],
-    entities: [],
-    users: [],
-    posts: [],
-    tags: [],
-    follows: [],
-  }));
+  const feedTrend = useMemo(() => {
+    const samples = [...feed].reverse().slice(-SPARKLINE_LEN);
+    let users = 0;
+    let posts = 0;
+    let tags = 0;
+    let follows = 0;
+    const trend = {
+      users: [] as number[],
+      posts: [] as number[],
+      tags: [] as number[],
+      follows: [] as number[],
+      entities: [] as number[],
+      ticks: [] as number[],
+      throughput: [] as number[],
+    };
 
-  useEffect(() => {
-    setHistory((prev) => ({
-      ticks: [...prev.ticks, activity.ticks].slice(-SPARKLINE_LEN),
-      entities: [...prev.entities, activityGrandTotal(activity)].slice(-SPARKLINE_LEN),
-      users: [...prev.users, activity.users].slice(-SPARKLINE_LEN),
-      posts: [...prev.posts, activity.posts].slice(-SPARKLINE_LEN),
-      tags: [...prev.tags, activity.tags].slice(-SPARKLINE_LEN),
-      follows: [...prev.follows, activity.follows].slice(-SPARKLINE_LEN),
-    }));
-  }, [activity]);
+    for (const tick of samples) {
+      users += tick.users;
+      posts += tick.posts;
+      tags += tick.tags;
+      follows += tick.follows;
+      trend.users.push(users);
+      trend.posts.push(posts);
+      trend.tags.push(tags);
+      trend.follows.push(follows);
+      trend.entities.push(users + posts + tags + follows);
+      trend.ticks.push(tick.tick);
+      trend.throughput.push(tick.users + tick.posts + tick.tags + tick.follows);
+    }
 
-  const throughputSpark = useMemo(
-    () => [...feed].reverse().map(tickTotal).slice(-SPARKLINE_LEN),
-    [feed]
-  );
+    return trend;
+  }, [feed]);
 
   const grandTotal = activityGrandTotal(activity);
 
@@ -593,14 +623,14 @@ export function AnalyticsView({
           value={rate === null ? "—" : `${formatRate(rate)}/m`}
           hint={`${simulator.intervalSecs}s tick interval`}
           accent="#fefa3d"
-          spark={throughputSpark}
+          spark={feedTrend.throughput}
         />
         <KpiCard
           label="Entities created"
           value={formatCompact(grandTotal)}
           hint={`${activity.ticks} ticks total`}
           accent="#ffc93c"
-          spark={history.entities}
+          spark={feedTrend.entities}
         />
         <KpiCard
           label="Homeservers"
@@ -611,13 +641,19 @@ export function AnalyticsView({
         <KpiCard
           label="Users online"
           value={formatCompact(totalUsers)}
-          hint={`${crossFollows} cross-hub follow edges`}
+          hint={`${crossHubEdges} cross-hub follow edges`}
           accent="#e07b1e"
-          spark={history.users}
         />
       </section>
 
-      <ActivityStreamChart feed={feed} />
+      {noActiveHomeservers && (
+        <div className="an-alert" role="status">
+          All homeservers are dormant — the simulator ticks but cannot create users, posts, tags, or
+          follows until you seed at least one homeserver.
+        </div>
+      )}
+
+      <ActivityStreamChart feed={feed} noActiveHomeservers={noActiveHomeservers} />
 
       <div className="an-grid">
         <div className="an-grid-main">
@@ -630,13 +666,13 @@ export function AnalyticsView({
             </header>
             <div className="an-totals-grid">
               <article className="an-total-tile">
-                <Sparkline data={history.ticks} color="#8a8a8a" />
+                <Sparkline data={feedTrend.ticks} color="#8a8a8a" />
                 <span className="an-total-value">{activity.ticks}</span>
                 <span className="an-total-label">Ticks</span>
               </article>
               {ENTITY_KEYS.map((key) => (
                 <article key={key} className="an-total-tile">
-                  <Sparkline data={history[key]} color={ENTITY_META[key].color} />
+                  <Sparkline data={feedTrend[key]} color={ENTITY_META[key].color} />
                   <span className="an-total-value">{activity[key]}</span>
                   <span className="an-total-label">{ENTITY_META[key].label}</span>
                 </article>

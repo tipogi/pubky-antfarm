@@ -20,6 +20,8 @@ export interface Homeserver {
   storageQuotaMb?: number;
   /** When true, no one can reference this homeserver's users (isolated island). */
   island: boolean;
+  /** When true, the HTTP process is stopped; metadata and DB are preserved. */
+  down: boolean;
   /**
    * Frontend-only: a placeholder node optimistically shown while its create
    * request is in flight. Dropped once the real homeserver arrives over SSE.

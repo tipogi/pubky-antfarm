@@ -38,6 +38,8 @@ pub struct Registry {
     /// Labels of dormant (stopped) homeservers. Users on these homeservers are
     /// out of the simulator rotation and must not author new activity.
     pub dormant: HashSet<String>,
+    /// Labels of homeservers whose HTTP process is stopped.
+    pub down: HashSet<String>,
 }
 
 impl Registry {
@@ -49,7 +51,15 @@ impl Registry {
             follows: Vec::new(),
             islands: HashSet::new(),
             dormant: HashSet::new(),
+            down: HashSet::new(),
         }
+    }
+
+    /// Whether a user index lives on a down homeserver (process stopped).
+    fn is_down_user(&self, index: usize) -> bool {
+        self.assignments
+            .get(&index)
+            .is_some_and(|label| self.down.contains(label))
     }
 
     /// Whether a user index lives on an island homeserver (cannot be referenced).
@@ -69,13 +79,13 @@ impl Registry {
 
     /// Pick a random user whose homeserver is in the active simulator rotation.
     fn random_active_user(&self) -> Option<(usize, PublicKey)> {
-        if self.dormant.is_empty() {
+        if self.dormant.is_empty() && self.down.is_empty() {
             return self.user_keys.random_user();
         }
         let eligible: Vec<(usize, &PublicKey)> = self
             .user_keys
             .all()
-            .filter(|(index, _)| !self.is_dormant_user(*index))
+            .filter(|(index, _)| !self.is_dormant_user(*index) && !self.is_down_user(*index))
             .collect();
         if eligible.is_empty() {
             return None;
@@ -129,6 +139,15 @@ impl Registry {
     /// Record which homeserver a user index lives on.
     pub fn assign(&mut self, index: usize, homeserver: String) {
         self.assignments.insert(index, homeserver);
+    }
+
+    /// User indices assigned to a homeserver label.
+    pub fn user_indices_on(&self, label: &str) -> Vec<usize> {
+        self.assignments
+            .iter()
+            .filter(|(_, hs)| hs.as_str() == label)
+            .map(|(index, _)| *index)
+            .collect()
     }
 
     /// Roll back a reserved-but-failed user signup (drops its slot + key).

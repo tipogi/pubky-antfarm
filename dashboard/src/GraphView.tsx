@@ -922,8 +922,8 @@ export function GraphView({
               <g
                 key={n.id}
                 className={`gv-node dht_client ${n.hs?.pending ? "pending" : ""} ${
-                  isLit(n.id) ? "" : "dim"
-                }`}
+                  n.hs?.down ? "down" : ""
+                } ${isLit(n.id) ? "" : "dim"}`}
                 transform={`translate(${n.x} ${n.y})`}
                 onMouseEnter={() => enterHover(n.id)}
                 onMouseLeave={() => leaveHover(n.id)}
@@ -959,7 +959,8 @@ export function GraphView({
                   className={`gv-node ${n.kind} ${lit ? "" : "dim"} ${
                     active ? "on" : "off"
                   } ${n.hs?.pending ? "pending" : ""} ${
-                    n.kind === "user" && selectedUser === n.user?.index
+                    n.hs?.down ? "down" : ""
+                  } ${n.kind === "user" && selectedUser === n.user?.index
                       ? "sel"
                       : ""
                   } ${n.kind === "hub" && expandedHs === n.hs?.label ? "expanded" : ""} ${

@@ -53,8 +53,8 @@ pub struct HomeserverInfo {
     pub storage_quota_mb: Option<u64>,
     /// When `true`, no one may reference this homeserver's users (isolated island).
     pub island: bool,
-    #[serde(skip_serializing)]
-    pub admin_url: String,
+    /// When `true`, the homeserver HTTP process is stopped (metadata preserved).
+    pub down: bool,
     #[serde(skip_serializing)]
     pub database_url: String,
 }
@@ -75,7 +75,7 @@ impl HomeserverInfo {
             users,
             storage_quota_mb: (hs.storage_quota_mb > 0).then_some(hs.storage_quota_mb),
             island: hs.island,
-            admin_url: hs.admin_url.clone(),
+            down: hs.down,
             database_url: hs.database_url.clone(),
         }
     }
