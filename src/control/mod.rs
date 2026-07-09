@@ -19,6 +19,10 @@ pub enum Action {
     SocialPost,
     /// Toggle/set a homeserver's island (isolation) mode.
     Island,
+    /// Stop the homeserver process (metadata and DB preserved).
+    Down,
+    /// Start a previously stopped homeserver process.
+    Up,
 }
 
 #[derive(Debug, Clone)]

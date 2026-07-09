@@ -32,7 +32,7 @@ pub enum Command {
     },
     /// List all homeservers and their initial users
     List,
-    /// Create, seed, or stop a homeserver on a running antfarm
+    /// Create, seed, stop, or set down/up a homeserver on a running antfarm
     Homeserver {
         /// Control socket address
         #[arg(long, default_value = DEFAULT_CONTROL_ADDR)]
@@ -59,6 +59,18 @@ pub enum HomeserverAction {
     /// Remove a homeserver from the simulator rotation (it stays running)
     Stop {
         /// Seed index of the homeserver to stop
+        #[arg(long)]
+        index: u8,
+    },
+    /// Stop the homeserver HTTP process (metadata and database preserved)
+    Down {
+        /// Seed index of the homeserver to stop
+        #[arg(long)]
+        index: u8,
+    },
+    /// Start a previously stopped homeserver process
+    Up {
+        /// Seed index of the homeserver to start
         #[arg(long)]
         index: u8,
     },
@@ -342,7 +354,7 @@ impl AntfarmConfig {
             eprintln!("  {} or specify a different path:", "→".cyan());
             eprintln!(
                 "    {}\n",
-                "cargo run -- run --config path/to/config.toml".dimmed()
+                "cargo run -- --config path/to/config.toml".dimmed()
             );
             std::process::exit(1);
         }

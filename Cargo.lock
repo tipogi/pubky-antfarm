@@ -3219,7 +3219,7 @@ dependencies = [
 [[package]]
 name = "pubky"
 version = "0.9.3"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "async-trait",
  "base64",
@@ -3315,7 +3315,7 @@ dependencies = [
 [[package]]
 name = "pubky-common"
 version = "0.9.3"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "argon2",
  "base64",
@@ -3335,7 +3335,7 @@ dependencies = [
 [[package]]
 name = "pubky-homeserver"
 version = "0.9.3"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3397,7 +3397,7 @@ dependencies = [
 [[package]]
 name = "pubky-testnet"
 version = "0.9.3"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "anyhow",
  "clap",
@@ -3433,7 +3433,7 @@ dependencies = [
 [[package]]
 name = "pubky_test_utils"
 version = "0.1.0"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "pubky_test_utils_drop_db_helper",
  "pubky_test_utils_macro",
@@ -3442,7 +3442,7 @@ dependencies = [
 [[package]]
 name = "pubky_test_utils_drop_db_helper"
 version = "0.1.0"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "sqlx",
 ]
@@ -3450,7 +3450,7 @@ dependencies = [
 [[package]]
 name = "pubky_test_utils_macro"
 version = "0.1.0"
-source = "git+https://github.com/pubky/pubky-core?branch=main#2e9b8830f94185295fdb64527889262447fa8a08"
+source = "git+https://github.com/pubky/pubky-core?branch=main#9ff7633bd5396f72aff4b3ecf4bc87cc4c2c36eb"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",

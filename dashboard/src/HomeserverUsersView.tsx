@@ -287,7 +287,8 @@ function UserActionTooltipButton({
 }
 
 function UserActionButtons({
-  disabled,
+  busy,
+  processDown,
   onFollow,
   onTag,
   onPost,
@@ -297,7 +298,8 @@ function UserActionButtons({
   onHomeserver,
   onDetails,
 }: {
-  disabled: boolean;
+  busy: boolean;
+  processDown: boolean;
   onFollow: () => void;
   onTag: () => void;
   onPost: () => void;
@@ -307,12 +309,14 @@ function UserActionButtons({
   onHomeserver: () => void;
   onDetails: () => void;
 }) {
+  const writesOff = busy || processDown;
+
   return (
     <div className="hs-user-action-btns" role="group" aria-label="User actions">
       <UserActionTooltipButton
         tip="Follow another user"
         label="Follow"
-        disabled={disabled}
+        disabled={writesOff}
         onClick={onFollow}
       >
         <FollowActionIcon />
@@ -320,7 +324,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="Tag a user or post"
         label="Tag"
-        disabled={disabled}
+        disabled={writesOff}
         onClick={onTag}
       >
         <TagActionIcon />
@@ -328,7 +332,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="Create a post, mention, or repost"
         label="Post"
-        disabled={disabled}
+        disabled={writesOff}
         onClick={onPost}
       >
         <PostActionIcon />
@@ -336,7 +340,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="Spam random posts and tags"
         label="Spam"
-        disabled={disabled}
+        disabled={writesOff}
         onClick={onBatch}
       >
         <SpamActionIcon />
@@ -344,7 +348,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="View user events"
         label="Event"
-        disabled={disabled}
+        disabled={writesOff}
         onClick={onEvents}
       >
         <EventActionIcon className="hs-user-action-icon" />
@@ -352,7 +356,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="View pkarr record"
         label="Pkarr"
-        disabled={disabled}
+        disabled={busy}
         onClick={onPkarr}
       >
         <PkarrActionIcon />
@@ -360,7 +364,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="Change homeserver"
         label="Homeserver"
-        disabled={disabled}
+        disabled={busy}
         onClick={onHomeserver}
       >
         <HomeserverActionIcon />
@@ -368,7 +372,7 @@ function UserActionButtons({
       <UserActionTooltipButton
         tip="View recovery phrase (mnemonic)"
         label="Mnemonic"
-        disabled={disabled}
+        disabled={busy}
         onClick={onDetails}
       >
         <DetailsActionIcon className="hs-user-action-icon" />
@@ -511,7 +515,10 @@ function ChangeHomeserverModal({
   const targetHomeservers = useMemo(
     () =>
       homeservers
-        .filter((target) => !target.pending && target.seed !== currentSeed)
+        .filter(
+          (target) =>
+            !target.pending && !target.down && target.seed !== currentSeed
+        )
         .sort((a, b) => a.seed - b.seed),
     [currentSeed, homeservers]
   );
@@ -659,6 +666,11 @@ export function HomeserverUsersView({
   );
 
   useEffect(() => {
+    if (hs.down) {
+      setStorageLoading(false);
+      return;
+    }
+
     let alive = true;
     setStorageLoading(true);
 
@@ -684,9 +696,11 @@ export function HomeserverUsersView({
     return () => {
       alive = false;
     };
-  }, [hs.seed, usersKey]);
+  }, [hs.seed, hs.down, usersKey]);
 
   useEffect(() => {
+    if (hs.down) return;
+
     let alive = true;
 
     for (const user of hs.users) {
@@ -718,7 +732,7 @@ export function HomeserverUsersView({
     return () => {
       alive = false;
     };
-  }, [hs.httpUrl, usersKey]);
+  }, [hs.down, hs.httpUrl, usersKey]);
 
   const openModal = (
     kind: ActionKind,
@@ -890,7 +904,8 @@ export function HomeserverUsersView({
                       </TableCell>
                       <TableCell className="hs-users-actions whitespace-nowrap border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-[18px] py-3">
                         <UserActionButtons
-                          disabled={busy}
+                          busy={busy}
+                          processDown={hs.down}
                           onFollow={() => openModal("follow", user.index, displayName)}
                           onTag={() => openModal("tag", user.index, displayName)}
                           onPost={() =>

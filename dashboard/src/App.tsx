@@ -15,6 +15,7 @@ import { CreateHomeserverModal, AddHomeserverTile } from "./CreateHomeserverModa
 import { CreateUserModal, AddUserKeyButton } from "./CreateUserModal";
 import { HomeserverStatusMenu } from "./HomeserverStatusMenu";
 import { IslandPill } from "./IslandPill";
+import { ProcessPill } from "./ProcessPill";
 import { AnalyticsView } from "./AnalyticsView";
 import { SearchView, SearchIcon } from "./SearchView";
 import { HomeserverUsersView } from "./HomeserverUsersView";
@@ -145,6 +146,7 @@ export default function App() {
               userCount: 0,
               users: [],
               island,
+              down: false,
               pending: true,
             },
           ]
@@ -418,6 +420,9 @@ function HomeserverDetailHeader({
               <h1>{hs.label}</h1>
               <HomeserverStatusMenu hs={hs} busy={busy} onAction={onAction} />
               <IslandPill hs={hs} busy={busy} onAction={onAction} />
+              {hs.seed !== 0 && (
+                <ProcessPill hs={hs} busy={busy} onAction={onAction} />
+              )}
             </div>
 
             <button
@@ -431,16 +436,26 @@ function HomeserverDetailHeader({
             </button>
 
             <div className="hs-detail-meta">
-              <a
-                className="hs-detail-meta-item hs-detail-url"
-                href={hs.httpUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={`Open ${hs.httpUrl}`}
-              >
-                <GlobeLinkIcon />
-                {shortUrl(hs.httpUrl)}
-              </a>
+              {hs.down ? (
+                <span
+                  className="hs-detail-meta-item hs-detail-url muted"
+                  title="Process stopped — use Running/Down to bring it back up"
+                >
+                  <GlobeLinkIcon />
+                  {shortUrl(hs.httpUrl)}
+                </span>
+              ) : (
+                <a
+                  className="hs-detail-meta-item hs-detail-url"
+                  href={hs.httpUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open ${hs.httpUrl}`}
+                >
+                  <GlobeLinkIcon />
+                  {shortUrl(hs.httpUrl)}
+                </a>
+              )}
               <span className="hs-detail-meta-item">seed {hs.seed}</span>
               <span className={`hs-detail-meta-item ${atCapacity ? "warn" : ""}`}>
                 {unlimited
@@ -458,7 +473,7 @@ function HomeserverDetailHeader({
                   Pkarr
                 </button>
                 <AddUserKeyButton
-                  disabled={busy}
+                  disabled={busy || hs.down}
                   onClick={() => setCreateUserOpen(true)}
                 />
               </span>
@@ -503,7 +518,7 @@ function HomeserverCard({
     <article
       className={`hs-card ${hs.status}${leader ? " leader" : ""}${
         hs.pending ? " pending" : ""
-      }`}
+      }${hs.down ? " down" : ""}`}
       style={
         {
           "--hs-accent": color,
@@ -512,7 +527,7 @@ function HomeserverCard({
       }
       onClick={hs.pending ? undefined : onClick}
     >
-      {active && <span className="hs-card-wire" aria-hidden />}
+      {active && !hs.down && <span className="hs-card-wire" aria-hidden />}
 
       <header className="hs-card-head">
         <span className="hs-card-avatar" aria-hidden>
@@ -541,6 +556,14 @@ function HomeserverCard({
                 title="Island — users can't be referenced"
               >
                 Island
+              </span>
+            )}
+            {hs.down && (
+              <span
+                className="hs-card-pill hs-process-pill process-off"
+                title="Process stopped"
+              >
+                Down
               </span>
             )}
           </div>
@@ -597,7 +620,7 @@ function HomeserverCard({
       <UserStack
         users={hs.users}
         userCount={hs.userCount}
-        homeserverUrl={hs.httpUrl}
+        homeserverUrl={hs.down ? "" : hs.httpUrl}
       />
 
       <div className="hs-card-divider" role="separator" />
@@ -616,16 +639,26 @@ function HomeserverCard({
           {shortKey(hs.publicKey)}
         </button>
         <span className="hs-card-links">
-          <a
-            className="hs-card-link"
-            href={hs.httpUrl}
-            target="_blank"
-            rel="noreferrer"
-            title="Open homeserver URL"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GlobeLinkIcon />
-          </a>
+          {hs.down ? (
+            <span
+              className="hs-card-link muted"
+              title="Process stopped"
+              aria-hidden
+            >
+              <GlobeLinkIcon />
+            </span>
+          ) : (
+            <a
+              className="hs-card-link"
+              href={hs.httpUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Open homeserver URL"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GlobeLinkIcon />
+            </a>
+          )}
         </span>
       </div>
     </article>
@@ -653,6 +686,7 @@ function UserChip({
   const [name, setName] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!homeserverUrl) return;
     let alive = true;
     const ctx: UserStorageContext = {
       pk: user.publicKey,

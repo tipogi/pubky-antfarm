@@ -2,7 +2,6 @@ export interface ControlResponse {
   ok: boolean;
   label?: string;
   publicKey?: string;
-  httpUrl?: string;
   message?: string;
   error?: string;
 }
@@ -68,6 +67,8 @@ export const api = {
     postJson("/api/homeserver/create", { index, island }),
   seedHomeserver: (index: number) => postJson("/api/homeserver/seed", { index }),
   stopHomeserver: (index: number) => postJson("/api/homeserver/stop", { index }),
+  downHomeserver: (index: number) => postJson("/api/homeserver/down", { index }),
+  upHomeserver: (index: number) => postJson("/api/homeserver/up", { index }),
   setIsland: (index: number, island: boolean) =>
     postJson("/api/homeserver/island", { index, island }),
   addUser: (hs: number, profile: boolean) =>

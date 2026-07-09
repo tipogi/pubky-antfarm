@@ -43,7 +43,7 @@ export function CreateUserModal({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (busy || atCapacity) return;
+    if (busy || atCapacity || hs.down) return;
     onClose();
     onAction(
       () => api.addUser(hs.seed, withProfile),
@@ -72,7 +72,7 @@ export function CreateUserModal({
               <Checkbox
                 id="create-user-profile"
                 checked={withProfile}
-                disabled={busy || atCapacity}
+                disabled={busy || atCapacity || hs.down}
                 onCheckedChange={(checked) => setWithProfile(checked === true)}
                 className="mt-0.5"
               />
@@ -89,6 +89,12 @@ export function CreateUserModal({
               </span>
             </span>
           </label>
+
+          {hs.down && (
+            <p className="text-xs leading-snug text-destructive">
+              Homeserver process is stopped. Bring it up before adding users.
+            </p>
+          )}
 
           {atCapacity && (
             <p className="text-xs leading-snug text-destructive">
@@ -107,7 +113,7 @@ export function CreateUserModal({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={busy || atCapacity}>
+            <Button type="submit" size="sm" disabled={busy || atCapacity || hs.down}>
               <Key className="h-4 w-4" />
               Create key
             </Button>

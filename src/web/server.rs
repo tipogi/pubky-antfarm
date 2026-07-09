@@ -56,6 +56,8 @@ pub async fn serve(
         .route("/api/homeserver/create", post(create_homeserver))
         .route("/api/homeserver/seed", post(seed_homeserver))
         .route("/api/homeserver/stop", post(stop_homeserver))
+        .route("/api/homeserver/down", post(down_homeserver))
+        .route("/api/homeserver/up", post(up_homeserver))
         .route("/api/homeserver/island", post(set_island))
         .route("/api/homeserver/:seed/users/storage", get(user_storage))
         .route("/api/user/:index/keys", get(user_keys))
@@ -286,6 +288,52 @@ async fn stop_homeserver(
         send_cmd(
             &app.ctrl_tx,
             control::Action::Stop,
+            None,
+            Some(req.index),
+            false,
+            None,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
+        )
+        .await,
+    )
+}
+
+async fn down_homeserver(
+    State(app): State<AppState>,
+    Json(req): Json<IndexReq>,
+) -> Json<control::Response> {
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Down,
+            None,
+            Some(req.index),
+            false,
+            None,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
+        )
+        .await,
+    )
+}
+
+async fn up_homeserver(
+    State(app): State<AppState>,
+    Json(req): Json<IndexReq>,
+) -> Json<control::Response> {
+    Json(
+        send_cmd(
+            &app.ctrl_tx,
+            control::Action::Up,
             None,
             Some(req.index),
             false,

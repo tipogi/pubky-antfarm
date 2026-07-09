@@ -60,6 +60,8 @@ pub struct Runtime {
     testnet: pubky_testnet::StaticTestnet,
     homeservers: Vec<Homeserver>,
     dormant: HashMap<u8, Homeserver>,
+    /// Running homeserver processes for hs2+ keyed by seed. hs1 always lives in StaticTestnet.
+    homeserver_apps: HashMap<u8, pubky_testnet::pubky_homeserver::HomeserverApp>,
     config: AntfarmConfig,
     sdk: Pubky,
     /// One signed-in session per user index, reused across writes so each user
@@ -106,6 +108,7 @@ impl Runtime {
         let startup = homeservers::start_all(&mut testnet, &config).await?;
         let homeservers = startup.active;
         let dormant = startup.dormant;
+        let homeserver_apps = startup.apps;
 
         db::list_databases(config.postgres_url()).await?;
 
@@ -167,6 +170,7 @@ impl Runtime {
             testnet,
             homeservers,
             dormant,
+            homeserver_apps,
             config,
             sdk,
             sessions: social::SessionCache::default(),
@@ -196,7 +200,7 @@ impl Runtime {
         }
 
         let simulate = !listen_only;
-        self.sync_islands().await;
+        self.sync_homeserver_flags().await;
 
         if simulate {
             println!("\n{}", "▸ Writing test data".cyan().bold());
@@ -266,9 +270,11 @@ impl Runtime {
             control::Action::Create
             | control::Action::Seed
             | control::Action::Stop
-            | control::Action::Island => {
+            | control::Action::Island
+            | control::Action::Down
+            | control::Action::Up => {
                 self.handle_control(cmd).await;
-                self.sync_islands().await;
+                self.sync_homeserver_flags().await;
                 self.publish_state().await;
             }
             control::Action::User
@@ -300,6 +306,14 @@ impl Runtime {
                 Some(i) => self.handle_stop(i),
                 None => Err(anyhow::anyhow!("stop requires --index")),
             },
+            control::Action::Down => match cmd.index {
+                Some(i) => self.handle_down(i).await,
+                None => Err(anyhow::anyhow!("down requires --index")),
+            },
+            control::Action::Up => match cmd.index {
+                Some(i) => self.handle_up(i).await,
+                None => Err(anyhow::anyhow!("up requires --index")),
+            },
             _ => unreachable!("handle_control only handles topology commands"),
         };
         let reply = reply.unwrap_or_else(|e| control::Reply::Err(format!("{e}")));
@@ -320,12 +334,27 @@ impl Runtime {
 
         // Resolve the target homeserver on the loop (it owns the topology).
         let user_hs = if matches!(cmd.action, control::Action::User) {
-            Some(self.lookup_hs(cmd.hs.unwrap_or(0)))
+            let hs_index = cmd.hs.unwrap_or(0);
+            if self.is_homeserver_down(hs_index) {
+                let label = Self::label_for(hs_index);
+                let _ = cmd.reply.send(control::Reply::Err(format!(
+                    "{label} is down — run `homeserver up --index {hs_index}` first"
+                )));
+                return;
+            }
+            Some(self.lookup_hs(hs_index))
         } else {
             None
         };
         let change_target_hs = if matches!(cmd.action, control::Action::ChangeHomeserver) {
             let hs_index = cmd.hs.unwrap_or(0);
+            if self.is_homeserver_down(hs_index) {
+                let label = Self::label_for(hs_index);
+                let _ = cmd.reply.send(control::Reply::Err(format!(
+                    "{label} is down — run `homeserver up --index {hs_index}` first"
+                )));
+                return;
+            }
             Some((hs_index, self.lookup_hs(hs_index)))
         } else {
             None
@@ -411,8 +440,15 @@ impl Runtime {
                 },
                 control::Action::SocialPost => match cmd.social_post {
                     Some(payload) => {
-                        run_social_post_cmd(&sdk, &sessions, &registry, &totals, &limiter, payload)
-                            .await
+                        run_social_post_cmd(
+                            &sdk,
+                            &sessions,
+                            &registry,
+                            &totals,
+                            &limiter,
+                            payload,
+                        )
+                        .await
                     }
                     None => Err(anyhow::anyhow!("social post payload required")),
                 },
@@ -433,7 +469,6 @@ impl Runtime {
             .map(|hs| (hs.label.clone(), hs.public_key.clone()))
             .collect();
 
-        let mut initial_events = Vec::new();
         for (label, hs_pk) in &homeservers {
             let (index, keypair) = {
                 let mut reg = self.registry.write().await;
@@ -447,12 +482,6 @@ impl Runtime {
                 reg.posts.push((user_pk.clone(), post_id));
                 reg.assign(index, label.clone());
             }
-            initial_events.push((label.clone(), user_pk, hs_pk.clone()));
-        }
-
-        println!("\n{}", "▸ Reading events".cyan().bold());
-        for (hs_name, user_pk, hs_pk) in &initial_events {
-            social::read_events(&self.sdk, hs_name, user_pk, hs_pk).await;
         }
 
         Ok(())
@@ -471,6 +500,7 @@ impl Runtime {
         let snapshot: Vec<simulator::HsSnapshot> = self
             .homeservers
             .iter()
+            .filter(|hs| !hs.down)
             .map(|hs| simulator::HsSnapshot {
                 label: hs.label.clone(),
                 public_key: hs.public_key.clone(),
@@ -550,7 +580,8 @@ impl Runtime {
         db::create_single_database(self.config.postgres_url(), &label).await?;
 
         let hs = homeservers::create_dynamic(
-            &mut self.testnet,
+            &self.testnet,
+            &mut self.homeserver_apps,
             self.config.postgres_url(),
             index,
             self.config.user_storage_quota_mb,
@@ -668,6 +699,106 @@ impl Runtime {
         })
     }
 
+    async fn handle_down(&mut self, index: u8) -> anyhow::Result<control::Reply> {
+        let label = Self::label_for(index);
+
+        if index == 0 {
+            anyhow::bail!("{label} cannot be stopped — the main homeserver always runs in the testnet");
+        }
+
+        let hs_snapshot = {
+            let hs = self
+                .homeserver_by_index(index)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "{label} not found (neither active nor dormant) — create it first"
+                    )
+                })?;
+            if hs.down {
+                anyhow::bail!("{label} is already down");
+            }
+            hs.clone()
+        };
+
+        homeservers::stop_app(&mut self.homeserver_apps, &hs_snapshot)?;
+
+        let hs = self
+            .homeserver_by_index_mut(index)
+            .expect("homeserver metadata outlived process stop");
+        hs.down = true;
+
+        self.invalidate_homeserver_sessions(&label).await;
+
+        println!(
+            "  {} {} process stopped",
+            "▼".red().bold(),
+            label.white().bold()
+        );
+
+        Ok(control::Reply::Ok {
+            label,
+            public_key: None,
+            http_url: None,
+            message: "homeserver stopped (process down, metadata preserved)".into(),
+        })
+    }
+
+    async fn handle_up(&mut self, index: u8) -> anyhow::Result<control::Reply> {
+        let label = Self::label_for(index);
+
+        if index == 0 {
+            anyhow::bail!("{label} cannot be started — the main homeserver always runs in the testnet");
+        }
+
+        let storage_quota_mb = {
+            let hs = self
+                .homeserver_by_index(index)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "{label} not found (neither active nor dormant) — create it first"
+                    )
+                })?;
+            if !hs.down {
+                anyhow::bail!("{label} is already up");
+            }
+            hs.storage_quota_mb
+        };
+
+        let hs_meta = self
+            .homeserver_by_index(index)
+            .expect("homeserver metadata checked above")
+            .clone();
+
+        homeservers::start_app(
+            &self.testnet,
+            &mut self.homeserver_apps,
+            &hs_meta,
+            storage_quota_mb,
+        )
+        .await?;
+
+        let hs = self
+            .homeserver_by_index_mut(index)
+            .expect("homeserver metadata outlived process start");
+        hs.down = false;
+
+        let http_url = hs.http_url.clone();
+
+        println!(
+            "  {} {} process started",
+            "▲".green().bold(),
+            label.white().bold()
+        );
+        println!("    {} {}", "HTTP:".dimmed(), http_url.underline());
+
+        Ok(control::Reply::Ok {
+            label,
+            public_key: None,
+            http_url: Some(http_url),
+            message: "homeserver started (process up)".into(),
+        })
+    }
+
     /// Labels of every homeserver (active or dormant) currently in island mode.
     fn island_labels(&self) -> std::collections::HashSet<String> {
         self.homeservers
@@ -684,14 +815,47 @@ impl Runtime {
         self.dormant.values().map(|hs| hs.label.clone()).collect()
     }
 
-    /// Keep the simulator's island and dormant caches aligned with homeserver
-    /// state.
-    async fn sync_islands(&self) {
+    /// Labels of every homeserver whose HTTP process is stopped.
+    fn down_labels(&self) -> std::collections::HashSet<String> {
+        self.homeservers
+            .iter()
+            .chain(self.dormant.values())
+            .filter(|hs| hs.down)
+            .map(|hs| hs.label.clone())
+            .collect()
+    }
+
+    /// Keep the simulator's island, dormant, and down caches aligned with
+    /// homeserver state.
+    async fn sync_homeserver_flags(&self) {
         let islands = self.island_labels();
         let dormant = self.dormant_labels();
+        let down = self.down_labels();
         let mut reg = self.registry.write().await;
         reg.islands = islands;
         reg.dormant = dormant;
+        reg.down = down;
+    }
+
+    fn homeserver_by_index(&self, index: u8) -> Option<&Homeserver> {
+        let label = Self::label_for(index);
+        self.homeservers
+            .iter()
+            .find(|hs| hs.label == label)
+            .or_else(|| self.dormant.get(&index))
+    }
+
+    fn homeserver_by_index_mut(&mut self, index: u8) -> Option<&mut Homeserver> {
+        let label = Self::label_for(index);
+        if let Some(hs) = self.homeservers.iter_mut().find(|hs| hs.label == label) {
+            return Some(hs);
+        }
+        self.dormant.get_mut(&index)
+    }
+
+    fn is_homeserver_down(&self, index: u8) -> bool {
+        self.homeserver_by_index(index)
+            .is_some_and(|hs| hs.down)
     }
 
     /// Resolve a homeserver seed to its label + public key, searching active
@@ -710,6 +874,17 @@ impl Runtime {
 
     fn label_for(index: u8) -> String {
         format!("hs{}", index + 1)
+    }
+
+    /// Drop cached sign-in sessions for every user on a homeserver.
+    async fn invalidate_homeserver_sessions(&self, label: &str) {
+        let indices = {
+            let reg = self.registry.read().await;
+            reg.user_indices_on(label)
+        };
+        if !indices.is_empty() {
+            self.sessions.invalidate_many(indices);
+        }
     }
 
     fn is_active(&self, label: &str) -> bool {

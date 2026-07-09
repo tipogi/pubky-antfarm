@@ -19,7 +19,9 @@ pub async fn start(config: &AntfarmConfig) -> anyhow::Result<StaticTestnet> {
     write!(tmp, "{}", toml::to_string(&hs_config)?)?;
     let config_path = tmp.path().to_path_buf();
 
-    StaticTestnet::start_with_homeserver_config(config_path)
+    StaticTestnet::builder()
+        .homeserver_config(config_path)
+        .build()
         .await
         .inspect_err(|e| {
             let msg = e.to_string();

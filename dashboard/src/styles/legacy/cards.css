@@ -486,6 +486,66 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
   border-color: rgba(255, 170, 70, 0.7);
 }
 
+/* Process (HTTP lifecycle) pill — orthogonal to active/dormant simulator state */
+.hs-process-pill {
+  gap: 5px;
+  cursor: pointer;
+  background: none;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.hs-process-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hs-process-pill-icon {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hs-process-pill.process-on {
+  color: #8fd4a8;
+  background: rgba(80, 200, 120, 0.1);
+  border: 1px solid rgba(80, 200, 120, 0.38);
+  box-shadow: 0 0 18px rgba(80, 200, 120, 0.08);
+}
+
+.hs-process-pill.process-off {
+  color: #f0a0a0;
+  background: rgba(220, 80, 80, 0.1);
+  border: 1px dashed rgba(220, 80, 80, 0.42);
+}
+
+button.hs-process-pill.process-on:hover:not(:disabled) {
+  color: #a8e8bc;
+  border-color: rgba(80, 200, 120, 0.55);
+}
+
+button.hs-process-pill.process-off:hover:not(:disabled) {
+  color: #ffc0c0;
+  border-color: rgba(220, 80, 80, 0.65);
+}
+
+span.hs-process-pill.process-off {
+  cursor: default;
+}
+
+/* Process stopped: dim card even when simulator status is active */
+.hs-card.down {
+  opacity: 0.72;
+  filter: saturate(0.75);
+}
+
+.hs-card.down > .hs-card-wire {
+  display: none;
+}
+
 .hs-stat {
   display: inline-flex;
   align-items: center;
@@ -808,6 +868,12 @@ button.hs-island-pill.island-on:hover:not(:disabled) {
 .hs-card-link:hover {
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+.hs-card-link.muted {
+  cursor: default;
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .hs-link-icon {

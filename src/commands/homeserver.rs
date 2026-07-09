@@ -8,10 +8,17 @@ pub async fn run(addr: &str, action: &HomeserverAction) -> anyhow::Result<()> {
         HomeserverAction::Create { index } => ("create", *index),
         HomeserverAction::Seed { index } => ("seed", *index),
         HomeserverAction::Stop { index } => ("stop", *index),
+        HomeserverAction::Down { index } => ("down", *index),
+        HomeserverAction::Up { index } => ("up", *index),
     };
 
     if matches!(action, HomeserverAction::Create { .. }) && index == 0 {
         anyhow::bail!("index 0 is reserved for hs1 (the built-in homeserver)");
+    }
+
+    if matches!(action, HomeserverAction::Down { .. } | HomeserverAction::Up { .. }) && index == 0
+    {
+        anyhow::bail!("index 0 is hs1 — the main homeserver cannot be stopped or restarted");
     }
 
     let resp = match control::client::send(addr, action_str, index).await {
