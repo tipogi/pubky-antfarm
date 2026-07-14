@@ -6,6 +6,12 @@ export interface ControlResponse {
   error?: string;
 }
 
+export interface SignupTokenResponse {
+  ok: boolean;
+  token?: string;
+  error?: string;
+}
+
 export interface UserStorageStats {
   index: number;
   publicKey: string;
@@ -91,4 +97,6 @@ export const api = {
     getJson<UserStorageStats[]>(`/api/homeserver/${seed}/users/storage`),
   fetchUserKeys: (index: number) =>
     getJson<UserKeys>(`/api/user/${index}/keys`),
+  generateSignupToken: (seed: number) =>
+    getJson<SignupTokenResponse>(`/api/homeserver/${seed}/signup-token`),
 };

@@ -184,7 +184,7 @@ export async function restoreSessionFromRecovery(
  * (`src/commands/keygen.rs`): PBKDF2-HMAC-SHA512 over the NFKD-normalized
  * phrase with salt "mnemonic", 2048 iterations, then take the first 32 bytes.
  */
-async function secretFromMnemonic(mnemonic: string): Promise<Uint8Array> {
+export async function secretFromMnemonic(mnemonic: string): Promise<Uint8Array> {
   const normalized = mnemonic.trim().replace(/\s+/g, " ").normalize("NFKD");
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(

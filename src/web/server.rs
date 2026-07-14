@@ -60,6 +60,7 @@ pub async fn serve(
         .route("/api/homeserver/up", post(up_homeserver))
         .route("/api/homeserver/island", post(set_island))
         .route("/api/homeserver/:seed/users/storage", get(user_storage))
+        .route("/api/homeserver/:seed/signup-token", get(generate_signup_token))
         .route("/api/user/:index/keys", get(user_keys))
         .route("/api/user", post(create_user))
         .route("/api/user/change-homeserver", post(change_user_homeserver))
@@ -365,6 +366,105 @@ async fn user_storage(
         )
     };
     Json(storage::fetch_users_storage(&database_url, configured_quota_mb, &users).await)
+}
+
+/// Default homeserver admin password for local testnet (`ConfigToml::default()`).
+const DEFAULT_ADMIN_PASSWORD: &str = "admin";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SignupTokenResponse {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Proxy `GET /generate_signup_token` on the homeserver admin server.
+async fn generate_signup_token(
+    State(app): State<AppState>,
+    Path(seed): Path<u8>,
+) -> Json<SignupTokenResponse> {
+    let (admin_url, down, label) = {
+        let state = app.state.borrow();
+        let Some(hs) = state.homeservers.iter().find(|hs| hs.seed == seed) else {
+            return Json(SignupTokenResponse {
+                ok: false,
+                token: None,
+                error: Some(format!("homeserver seed {seed} not found")),
+            });
+        };
+        (hs.admin_url.clone(), hs.down, hs.label.clone())
+    };
+
+    if down {
+        return Json(SignupTokenResponse {
+            ok: false,
+            token: None,
+            error: Some(format!("{label} process is stopped")),
+        });
+    }
+
+    if admin_url.is_empty() {
+        return Json(SignupTokenResponse {
+            ok: false,
+            token: None,
+            error: Some(format!("{label} has no admin server URL")),
+        });
+    }
+
+    let url = format!(
+        "{}/generate_signup_token",
+        admin_url.trim_end_matches('/')
+    );
+
+    let response = match reqwest::Client::new()
+        .get(&url)
+        .header("X-Admin-Password", DEFAULT_ADMIN_PASSWORD)
+        .send()
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => {
+            return Json(SignupTokenResponse {
+                ok: false,
+                token: None,
+                error: Some(format!("admin request failed: {e}")),
+            });
+        }
+    };
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        let detail = if body.is_empty() {
+            status.to_string()
+        } else {
+            body
+        };
+        return Json(SignupTokenResponse {
+            ok: false,
+            token: None,
+            error: Some(format!("admin server returned {detail}")),
+        });
+    }
+
+    let token = response.text().await.unwrap_or_default();
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Json(SignupTokenResponse {
+            ok: false,
+            token: None,
+            error: Some("admin server returned an empty token".into()),
+        });
+    }
+
+    Json(SignupTokenResponse {
+        ok: true,
+        token: Some(token),
+        error: None,
+    })
 }
 
 #[derive(Serialize)]

@@ -13,6 +13,7 @@ import { SocialPostModal } from "./SocialPostModal";
 import { PkarrRecordModal } from "./PkarrRecordModal";
 import { PkarrRecordIcon } from "./PkarrRecordIcon";
 import { EventActionIcon, UserEventsModal } from "./UserEventsModal";
+import { AuthActionIcon, AuthApproveModal } from "./AuthApproveModal";
 import { DetailsActionIcon, UserDetailsModal } from "./UserDetailsModal";
 import { loadProfile, loadAvatar, type UserStorageContext } from "./pubky";
 import { hubColorFor } from "./hubColors";
@@ -296,6 +297,7 @@ function UserActionButtons({
   onEvents,
   onPkarr,
   onHomeserver,
+  onAuth,
   onDetails,
 }: {
   busy: boolean;
@@ -307,6 +309,7 @@ function UserActionButtons({
   onEvents: () => void;
   onPkarr: () => void;
   onHomeserver: () => void;
+  onAuth: () => void;
   onDetails: () => void;
 }) {
   const writesOff = busy || processDown;
@@ -368,6 +371,14 @@ function UserActionButtons({
         onClick={onHomeserver}
       >
         <HomeserverActionIcon />
+      </UserActionTooltipButton>
+      <UserActionTooltipButton
+        tip="Approve a pubkyauth request as this user (Ring simulator)"
+        label="Auth"
+        disabled={writesOff}
+        onClick={onAuth}
+      >
+        <AuthActionIcon className="hs-user-action-icon" />
       </UserActionTooltipButton>
       <UserActionTooltipButton
         tip="View recovery phrase (mnemonic)"
@@ -580,7 +591,7 @@ function ChangeHomeserverModal({
                 >
                   <SelectValue placeholder="Select homeserver" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent portalled={false} position="popper" sideOffset={4}>
                   {targetHomeservers.map((target) => (
                     <SelectItem key={target.seed} value={String(target.seed)}>
                       {target.label} (seed {target.seed})
@@ -623,6 +634,7 @@ export function HomeserverUsersView({
   hs,
   homeservers,
   pkarrRelay,
+  httpRelayInbox,
   busy,
   onAction,
   onCopyKey,
@@ -630,6 +642,7 @@ export function HomeserverUsersView({
   hs: Homeserver;
   homeservers: Homeserver[];
   pkarrRelay: string;
+  httpRelayInbox: string;
   busy: boolean;
   onAction: RunAction;
   onCopyKey: (key: string) => void | Promise<void>;
@@ -657,6 +670,10 @@ export function HomeserverUsersView({
     kindLabel: string;
     userIndex: number;
     publicKey: string;
+  } | null>(null);
+  const [authModal, setAuthModal] = useState<{
+    label: string;
+    userIndex: number;
   } | null>(null);
 
   // Stable key so SSE state refreshes (new `users` array refs) don't retrigger fetches.
@@ -786,6 +803,10 @@ export function HomeserverUsersView({
       userIndex,
       publicKey,
     });
+  };
+
+  const openAuthModal = (userIndex: number, displayName: string) => {
+    setAuthModal({ label: displayName, userIndex });
   };
 
   const { color, keyColor } = hubColorFor(hs.seed);
@@ -921,6 +942,7 @@ export function HomeserverUsersView({
                           onHomeserver={() =>
                             openHomeserverModal(user.index, displayName)
                           }
+                          onAuth={() => openAuthModal(user.index, displayName)}
                           onDetails={() =>
                             openDetailsModal(user.index, displayName, user.publicKey)
                           }
@@ -1011,6 +1033,18 @@ export function HomeserverUsersView({
           userIndex={detailsModal.userIndex}
           publicKey={detailsModal.publicKey}
           onClose={() => setDetailsModal(null)}
+        />
+      )}
+
+      {authModal && (
+        <AuthApproveModal
+          userIndex={authModal.userIndex}
+          displayName={authModal.label}
+          homeserverZ32={hs.publicKey}
+          httpRelayInbox={httpRelayInbox}
+          busy={busy}
+          onClose={() => setAuthModal(null)}
+          onAction={onAction}
         />
       )}
     </div>

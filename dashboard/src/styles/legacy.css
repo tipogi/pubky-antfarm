@@ -855,6 +855,22 @@ body {
   cursor: pointer;
   text-decoration: none;
   transition: color 0.15s ease;
+  white-space: nowrap;
+}
+
+.hs-detail-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease;
+  white-space: nowrap;
 }
 
 .hs-detail-add-key {
@@ -869,6 +885,7 @@ body {
   cursor: pointer;
   text-decoration: none;
   transition: color 0.15s ease;
+  white-space: nowrap;
 }
 
 .hs-detail-meta-links {
@@ -876,10 +893,13 @@ body {
   align-items: center;
   gap: 12px;
   margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .hs-detail-url .hs-link-icon,
 .hs-detail-pkarr .hs-link-icon,
+.hs-detail-invite .hs-link-icon,
 .hs-detail-add-key .hs-link-icon {
   width: 13px;
   height: 13px;
@@ -892,10 +912,12 @@ body {
 }
 
 .hs-detail-pkarr:hover,
+.hs-detail-invite:hover:not(:disabled),
 .hs-detail-add-key:hover:not(:disabled) {
   color: var(--text);
 }
 
+.hs-detail-invite:disabled,
 .hs-detail-add-key:disabled {
   opacity: 0.45;
   cursor: not-allowed;

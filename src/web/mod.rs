@@ -55,6 +55,9 @@ pub struct HomeserverInfo {
     pub island: bool,
     /// When `true`, the homeserver HTTP process is stopped (metadata preserved).
     pub down: bool,
+    /// Admin API base URL (e.g. `http://127.0.0.1:6288`). Not sent to the dashboard client.
+    #[serde(skip_serializing)]
+    pub admin_url: String,
     #[serde(skip_serializing)]
     pub database_url: String,
 }
@@ -76,6 +79,7 @@ impl HomeserverInfo {
             storage_quota_mb: (hs.storage_quota_mb > 0).then_some(hs.storage_quota_mb),
             island: hs.island,
             down: hs.down,
+            admin_url: hs.admin_url.clone(),
             database_url: hs.database_url.clone(),
         }
     }

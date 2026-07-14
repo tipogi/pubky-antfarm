@@ -13,6 +13,10 @@ import { api, type ControlResponse } from "./api";
 import { GraphView } from "./GraphView";
 import { CreateHomeserverModal, AddHomeserverTile } from "./CreateHomeserverModal";
 import { CreateUserModal, AddUserKeyButton } from "./CreateUserModal";
+import {
+  SignupInviteButton,
+  SignupInviteModal,
+} from "./SignupInviteModal";
 import { HomeserverStatusMenu } from "./HomeserverStatusMenu";
 import { IslandPill } from "./IslandPill";
 import { ProcessPill } from "./ProcessPill";
@@ -274,6 +278,7 @@ export default function App() {
                   hs={resolveHs(detailHs)}
                   homeservers={homeservers}
                   pkarrRelay={state.network.pkarrRelay}
+                  httpRelayInbox={state.network.httpRelayInbox}
                   busy={busy}
                   onAction={runAction}
                   onCopyKey={copyKey}
@@ -387,10 +392,30 @@ function HomeserverDetailHeader({
   onAction: RunAction;
 }) {
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const { color, keyColor } = hubColorFor(hs.seed);
   const unlimited = maxUsers === 0;
   const atCapacity = !unlimited && hs.userCount >= maxUsers;
   const pkarrUrl = `${pkarrRelay.replace(/\/$/, "")}/${hs.publicKey}`;
+
+  const requestInviteCode = () => {
+    onAction(async () => {
+      const res = await api.generateSignupToken(hs.seed);
+      if (!res.ok || !res.token) {
+        return { ok: false, error: res.error ?? "Failed to generate invite code" };
+      }
+      try {
+        await navigator.clipboard.writeText(res.token);
+      } catch {
+        // Clipboard may be unavailable; modal still shows the token.
+      }
+      setInviteToken(res.token);
+      return {
+        ok: true,
+        message: `invite code copied: ${res.token}`,
+      };
+    }, `Generating invite code for ${hs.label}…`);
+  };
 
   return (
     <>
@@ -463,6 +488,10 @@ function HomeserverDetailHeader({
                   : `${hs.userCount} / ${maxUsers} users`}
               </span>
               <span className="hs-detail-meta-links">
+                <SignupInviteButton
+                  disabled={busy || hs.down}
+                  onClick={requestInviteCode}
+                />
                 <button
                   type="button"
                   className="hs-detail-meta-item hs-detail-pkarr"
@@ -489,6 +518,14 @@ function HomeserverDetailHeader({
           busy={busy}
           onClose={() => setCreateUserOpen(false)}
           onAction={onAction}
+        />
+      )}
+
+      {inviteToken && (
+        <SignupInviteModal
+          label={hs.label}
+          token={inviteToken}
+          onClose={() => setInviteToken(null)}
         />
       )}
     </>
