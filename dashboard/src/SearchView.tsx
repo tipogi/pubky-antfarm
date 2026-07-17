@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Session } from "@synonymdev/pubky";
 import {
   Table,
@@ -17,7 +11,6 @@ import {
 import { formatContent } from "./eventContentFormat";
 import {
   extractPrivReferences,
-  privContentKey,
   resolvePrivRef,
   type PrivRef,
 } from "./privPathRefs";
@@ -58,26 +51,37 @@ function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+type ContentState = EventContentResult | "loading" | null;
+
 function PrivRefsPanel({
-  rowIndex,
   refs,
   session,
   sessionUserZ32,
-  privContentByRow,
-  onResolve,
 }: {
-  rowIndex: number;
   refs: PrivRef[];
   session: Session | null;
   sessionUserZ32: string | null;
-  privContentByRow: Record<string, EventContentResult | "loading">;
-  onResolve: (rowIndex: number, refs: PrivRef[]) => void;
 }) {
+  const [contentByPath, setContentByPath] = useState<
+    Record<string, ContentState>
+  >({});
+
   useEffect(() => {
-    if (session && sessionUserZ32 && refs.length > 0) {
-      onResolve(rowIndex, refs);
+    if (!session || !sessionUserZ32 || refs.length === 0) {
+      setContentByPath({});
+      return;
     }
-  }, [rowIndex, refs, session, sessionUserZ32, onResolve]);
+
+    setContentByPath(
+      Object.fromEntries(refs.map((ref) => [ref.path, "loading" as const]))
+    );
+
+    for (const ref of refs) {
+      void resolvePrivRef(session, ref, sessionUserZ32).then((result) => {
+        setContentByPath((prev) => ({ ...prev, [ref.path]: result }));
+      });
+    }
+  }, [refs, session, sessionUserZ32]);
 
   if (refs.length === 0) return null;
 
@@ -93,10 +97,9 @@ function PrivRefsPanel({
       )}
       <ul className="search-priv-ref-list">
         {refs.map((ref) => {
-          const key = privContentKey(rowIndex, ref.path);
-          const content = privContentByRow[key];
+          const content = contentByPath[ref.path];
           return (
-            <li key={key} className="search-priv-ref-item">
+            <li key={ref.path} className="search-priv-ref-item">
               <details className="search-recovery search-priv-ref">
                 <summary
                   className="search-recovery-summary search-priv-ref-summary"
@@ -136,23 +139,17 @@ function PrivRefsPanel({
 
 function EventDetailPanel({
   event,
-  rowIndex,
   content,
   privRefs,
   session,
   sessionUserZ32,
-  privContentByRow,
-  onResolve,
   onClose,
 }: {
   event: SearchEvent;
-  rowIndex: number;
-  content: EventContentResult | "loading" | undefined;
+  content: ContentState;
   privRefs: PrivRef[];
   session: Session | null;
   sessionUserZ32: string | null;
-  privContentByRow: Record<string, EventContentResult | "loading">;
-  onResolve: (rowIndex: number, refs: PrivRef[]) => void;
   onClose: () => void;
 }) {
   const isPriv = event.scope === "priv";
@@ -214,7 +211,7 @@ function EventDetailPanel({
         {isPut && (
           <section className="search-detail-content-section">
             <p className="search-detail-section-title">Content</p>
-            {content === "loading" || content === undefined ? (
+            {content === "loading" || content === null ? (
               <p className="hs-events-content-status muted">Loading content…</p>
             ) : content.ok ? (
               <>
@@ -222,12 +219,9 @@ function EventDetailPanel({
                   {formatContent(content)}
                 </pre>
                 <PrivRefsPanel
-                  rowIndex={rowIndex}
                   refs={privRefs}
                   session={session}
                   sessionUserZ32={sessionUserZ32}
-                  privContentByRow={privContentByRow}
-                  onResolve={onResolve}
                 />
               </>
             ) : (
@@ -259,16 +253,10 @@ export function SearchView() {
   const { status, events, error, privError, searchedKey } =
     useSearchEventStream(activeKey, { session, sessionUserZ32 });
   const [scopeFilter, setScopeFilter] = useState<"all" | "pub" | "priv">("all");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [contentByRow, setContentByRow] = useState<
-    Record<number, EventContentResult | "loading">
-  >({});
-  const [privRefsByRow, setPrivRefsByRow] = useState<Record<number, PrivRef[]>>(
-    {}
-  );
-  const [privContentByRow, setPrivContentByRow] = useState<
-    Record<string, EventContentResult | "loading">
-  >({});
+
+  const [selected, setSelected] = useState<SearchEvent | null>(null);
+  const [content, setContent] = useState<ContentState>(null);
+  const [privRefs, setPrivRefs] = useState<PrivRef[]>([]);
 
   const sessionRef = useRef<Session | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -299,11 +287,30 @@ export function SearchView() {
     if (!isActive) inputRef.current?.focus();
   }, [isActive]);
 
-  const clearContentState = () => {
-    setSelectedIndex(null);
-    setContentByRow({});
-    setPrivRefsByRow({});
-    setPrivContentByRow({});
+  const closeDetail = () => {
+    setSelected(null);
+    setContent(null);
+    setPrivRefs([]);
+  };
+
+  const selectEvent = (event: SearchEvent) => {
+    setSelected(event);
+    setPrivRefs([]);
+
+    if (event.eventType !== "PUT") {
+      setContent(null);
+      return;
+    }
+
+    setContent("loading");
+    void loadSearchEventContent(event, session).then((result) => {
+      setContent(result);
+      if (result.ok && result.body) {
+        setPrivRefs(
+          extractPrivReferences(result.body, sessionUserZ32 ?? event.ownerZ32)
+        );
+      }
+    });
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -314,7 +321,7 @@ export function SearchView() {
       return;
     }
     setInputError(null);
-    clearContentState();
+    closeDetail();
     setActiveKey(trimmed);
   };
 
@@ -322,52 +329,7 @@ export function SearchView() {
     setInput("");
     setInputError(null);
     setActiveKey(null);
-    clearContentState();
-  };
-
-  const resolvePrivRefs = useCallback(
-    (rowIndex: number, refs: PrivRef[]) => {
-      if (!session || !sessionUserZ32) return;
-
-      for (const ref of refs) {
-        const key = privContentKey(rowIndex, ref.path);
-        setPrivContentByRow((prev) => {
-          if (prev[key] !== undefined) return prev;
-          return { ...prev, [key]: "loading" };
-        });
-
-        void resolvePrivRef(session, ref, sessionUserZ32).then((result) => {
-          setPrivContentByRow((prev) => ({ ...prev, [key]: result }));
-        });
-      }
-    },
-    [session, sessionUserZ32]
-  );
-
-  const selectEvent = (index: number, event: SearchEvent) => {
-    if (selectedIndex === index) {
-      setSelectedIndex(null);
-      return;
-    }
-    setSelectedIndex(index);
-
-    if (event.eventType !== "PUT") return;
-
-    if (contentByRow[index] === undefined) {
-      setContentByRow((prev) => ({ ...prev, [index]: "loading" }));
-      void loadSearchEventContent(event, session).then((result) => {
-        setContentByRow((prev) => ({ ...prev, [index]: result }));
-        if (result.ok && result.body) {
-          const refs = extractPrivReferences(
-            result.body,
-            sessionUserZ32 ?? event.ownerZ32
-          );
-          if (refs.length > 0) {
-            setPrivRefsByRow((prev) => ({ ...prev, [index]: refs }));
-          }
-        }
-      });
-    }
+    closeDetail();
   };
 
   const handleRecoveryImport = async (e: FormEvent) => {
@@ -383,7 +345,7 @@ export function SearchView() {
 
     setRecoveryError(null);
     setRecoveryLoading(true);
-    clearContentState();
+    closeDetail();
 
     try {
       if (session) {
@@ -420,7 +382,7 @@ export function SearchView() {
 
     setMnemonicError(null);
     setMnemonicLoading(true);
-    clearContentState();
+    closeDetail();
 
     try {
       if (session) {
@@ -455,28 +417,26 @@ export function SearchView() {
   }, [session, scopeFilter]);
 
   useEffect(() => {
-    if (selectedIndex === null) return;
+    if (!selected) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedIndex(null);
+      if (e.key === "Escape") closeDetail();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedIndex]);
+  }, [selected]);
 
-  const selectedEvent =
-    selectedIndex !== null ? (events[selectedIndex] ?? null) : null;
+  const visibleEvents =
+    scopeFilter === "all"
+      ? events
+      : events.filter((event) =>
+          scopeFilter === "priv" ? event.scope === "priv" : event.scope === "pub"
+        );
 
   const privCount = events.reduce(
     (n, e) => n + (e.scope === "priv" ? 1 : 0),
     0
   );
   const pubCount = events.length - privCount;
-
-  const matchesScope = (event: SearchEvent): boolean => {
-    if (scopeFilter === "all") return true;
-    const priv = event.scope === "priv";
-    return scopeFilter === "priv" ? priv : !priv;
-  };
 
   const countLabel =
     status === "connecting"
@@ -529,336 +489,339 @@ export function SearchView() {
         <div className="search-advanced-region">
           {inputError && <p className="search-error">{inputError}</p>}
 
-          <details
-            className="search-recovery"
-            key={session ? "auth" : "anon"}
-          >
-          <summary className="search-recovery-summary">
-            Advanced: authenticate to read private paths
-          </summary>
-          {!session && (
-          <>
-          <p className="search-recovery-hint muted">
-            Sign in with your keypair to read the owner&apos;s encrypted{" "}
-            <code>/priv/</code> paths.
-          </p>
-
-          <div className="search-advanced-body">
-            <div
-              className="search-auth-tabs"
-              role="tablist"
-              aria-label="Authentication method"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={authMethod === "recovery"}
-                className={`search-auth-tab${authMethod === "recovery" ? " active" : ""}`}
-                onClick={() => setAuthMethod("recovery")}
-              >
-                Recovery file
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={authMethod === "mnemonic"}
-                className={`search-auth-tab${authMethod === "mnemonic" ? " active" : ""}`}
-                onClick={() => setAuthMethod("mnemonic")}
-              >
-                Mnemonic
-              </button>
-            </div>
-
-            {authMethod === "recovery" ? (
+          <details className="search-recovery" key={session ? "auth" : "anon"}>
+            <summary className="search-recovery-summary">
+              Advanced: authenticate to read private paths
+            </summary>
+            {!session && (
               <>
-                <form
-                  className="search-recovery-form"
-                  onSubmit={handleRecoveryImport}
-                >
-                  <label className="search-field-group">
-                    <span className="search-field-label">Recovery file</span>
-                    <input
-                      type="file"
-                      className="search-recovery-file"
-                      accept="*/*"
-                      onChange={(e) => {
-                        setRecoveryFile(e.target.files?.[0] ?? null);
-                        if (recoveryError) setRecoveryError(null);
-                      }}
-                      aria-label="Recovery file"
-                    />
-                  </label>
-                  <label className="search-field-group">
-                    <span className="search-field-label">Passphrase</span>
-                    <input
-                      type="password"
-                      className="search-input search-recovery-passphrase"
-                      placeholder="Enter passphrase"
-                      value={passphrase}
-                      onChange={(e) => {
-                        setPassphrase(e.target.value);
-                        if (recoveryError) setRecoveryError(null);
-                      }}
-                      autoComplete="off"
-                      aria-label="Recovery passphrase"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    className="search-submit action"
-                    disabled={recoveryLoading}
+                <p className="search-recovery-hint muted">
+                  Sign in with your keypair to read the owner&apos;s encrypted{" "}
+                  <code>/priv/</code> paths.
+                </p>
+
+                <div className="search-advanced-body">
+                  <div
+                    className="search-auth-tabs"
+                    role="tablist"
+                    aria-label="Authentication method"
                   >
-                    {recoveryLoading ? "Authenticating…" : "Authenticate"}
-                  </button>
-                </form>
-                {recoveryError && (
-                  <p className="search-error">{recoveryError}</p>
-                )}
-              </>
-            ) : (
-              <>
-                <form
-                  className="search-recovery-form"
-                  onSubmit={handleMnemonicImport}
-                >
-                  <label className="search-field-group">
-                    <span className="search-field-label">Mnemonic phrase</span>
-                    <input
-                      type="text"
-                      className="search-input search-mnemonic-input"
-                      placeholder="word1 word2 word3 …"
-                      value={mnemonic}
-                      onChange={(e) => {
-                        setMnemonic(e.target.value);
-                        if (mnemonicError) setMnemonicError(null);
-                      }}
-                      autoComplete="off"
-                      spellCheck={false}
-                      aria-label="Mnemonic phrase"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    className="search-submit action"
-                    disabled={mnemonicLoading}
-                  >
-                    {mnemonicLoading ? "Authenticating…" : "Authenticate"}
-                  </button>
-                </form>
-                {mnemonicError && (
-                  <p className="search-error">{mnemonicError}</p>
-                )}
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={authMethod === "recovery"}
+                      className={`search-auth-tab${authMethod === "recovery" ? " active" : ""}`}
+                      onClick={() => setAuthMethod("recovery")}
+                    >
+                      Recovery file
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={authMethod === "mnemonic"}
+                      className={`search-auth-tab${authMethod === "mnemonic" ? " active" : ""}`}
+                      onClick={() => setAuthMethod("mnemonic")}
+                    >
+                      Mnemonic
+                    </button>
+                  </div>
+
+                  {authMethod === "recovery" ? (
+                    <>
+                      <form
+                        className="search-recovery-form"
+                        onSubmit={handleRecoveryImport}
+                      >
+                        <label className="search-field-group">
+                          <span className="search-field-label">
+                            Recovery file
+                          </span>
+                          <input
+                            type="file"
+                            className="search-recovery-file"
+                            accept="*/*"
+                            onChange={(e) => {
+                              setRecoveryFile(e.target.files?.[0] ?? null);
+                              if (recoveryError) setRecoveryError(null);
+                            }}
+                            aria-label="Recovery file"
+                          />
+                        </label>
+                        <label className="search-field-group">
+                          <span className="search-field-label">Passphrase</span>
+                          <input
+                            type="password"
+                            className="search-input search-recovery-passphrase"
+                            placeholder="Enter passphrase"
+                            value={passphrase}
+                            onChange={(e) => {
+                              setPassphrase(e.target.value);
+                              if (recoveryError) setRecoveryError(null);
+                            }}
+                            autoComplete="off"
+                            aria-label="Recovery passphrase"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="search-submit action"
+                          disabled={recoveryLoading}
+                        >
+                          {recoveryLoading
+                            ? "Authenticating…"
+                            : "Authenticate"}
+                        </button>
+                      </form>
+                      {recoveryError && (
+                        <p className="search-error">{recoveryError}</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <form
+                        className="search-recovery-form"
+                        onSubmit={handleMnemonicImport}
+                      >
+                        <label className="search-field-group">
+                          <span className="search-field-label">
+                            Mnemonic phrase
+                          </span>
+                          <input
+                            type="text"
+                            className="search-input search-mnemonic-input"
+                            placeholder="word1 word2 word3 …"
+                            value={mnemonic}
+                            onChange={(e) => {
+                              setMnemonic(e.target.value);
+                              if (mnemonicError) setMnemonicError(null);
+                            }}
+                            autoComplete="off"
+                            spellCheck={false}
+                            aria-label="Mnemonic phrase"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="search-submit action"
+                          disabled={mnemonicLoading}
+                        >
+                          {mnemonicLoading
+                            ? "Authenticating…"
+                            : "Authenticate"}
+                        </button>
+                      </form>
+                      {mnemonicError && (
+                        <p className="search-error">{mnemonicError}</p>
+                      )}
+                    </>
+                  )}
+                </div>
               </>
             )}
-          </div>
-          </>
-          )}
-        </details>
+          </details>
         </div>
       </div>
 
       {isActive && (
         <div className="search-panel">
-        {searchedKey && (
-          <div className="search-status">
-            <span className="search-status-key" title={searchedKey}>
-              {searchedKey}
-            </span>
-            <div className="search-status-badges">
-              {countLabel && (
-                <span
-                  className={`hs-events-head-badge${status === "connecting" ? " loading" : events.length ? " ok" : ""}`}
-                >
-                  {countLabel}
-                </span>
-              )}
-              {status === "streaming" && (
-                <span className="search-live-badge" aria-label="Live stream">
-                  Live
-                </span>
-              )}
-              {session && (
-                <span className="search-signed-in-badge" aria-label="Signed in">
-                  Signed in
-                </span>
-              )}
+          {searchedKey && (
+            <div className="search-status">
+              <span className="search-status-key" title={searchedKey}>
+                {searchedKey}
+              </span>
+              <div className="search-status-badges">
+                {countLabel && (
+                  <span
+                    className={`hs-events-head-badge${status === "connecting" ? " loading" : events.length ? " ok" : ""}`}
+                  >
+                    {countLabel}
+                  </span>
+                )}
+                {status === "streaming" && (
+                  <span className="search-live-badge" aria-label="Live stream">
+                    Live
+                  </span>
+                )}
+                {session && (
+                  <span
+                    className="search-signed-in-badge"
+                    aria-label="Signed in"
+                  >
+                    Signed in
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {error && <p className="search-error">{error}</p>}
+          {error && <p className="search-error">{error}</p>}
 
-        {events.length > 0 && (
-          <div className="search-scope-bar">
-            <div
-              className="search-auth-tabs search-scope-tabs"
-              role="tablist"
-              aria-label="Filter events by scope"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={scopeFilter === "all"}
-                className={`search-auth-tab${scopeFilter === "all" ? " active" : ""}`}
-                onClick={() => setScopeFilter("all")}
+          {events.length > 0 && (
+            <div className="search-scope-bar">
+              <div
+                className="search-auth-tabs search-scope-tabs"
+                role="tablist"
+                aria-label="Filter events by scope"
               >
-                All ({events.length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={scopeFilter === "pub"}
-                className={`search-auth-tab${scopeFilter === "pub" ? " active" : ""}`}
-                onClick={() => setScopeFilter("pub")}
-              >
-                Public ({pubCount})
-              </button>
-              {session && (
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={scopeFilter === "priv"}
-                  className={`search-auth-tab${scopeFilter === "priv" ? " active" : ""}`}
-                  onClick={() => setScopeFilter("priv")}
+                  aria-selected={scopeFilter === "all"}
+                  className={`search-auth-tab${scopeFilter === "all" ? " active" : ""}`}
+                  onClick={() => setScopeFilter("all")}
                 >
-                  Private ({privCount})
+                  All ({events.length})
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={scopeFilter === "pub"}
+                  className={`search-auth-tab${scopeFilter === "pub" ? " active" : ""}`}
+                  onClick={() => setScopeFilter("pub")}
+                >
+                  Public ({pubCount})
+                </button>
+                {session && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={scopeFilter === "priv"}
+                    className={`search-auth-tab${scopeFilter === "priv" ? " active" : ""}`}
+                    onClick={() => setScopeFilter("priv")}
+                  >
+                    Private ({privCount})
+                  </button>
+                )}
+              </div>
+              {privError && (
+                <span className="search-priv-note" title={privError}>
+                  Private events unavailable
+                </span>
               )}
             </div>
-            {privError && (
-              <span className="search-priv-note" title={privError}>
-                Private events unavailable
-              </span>
-            )}
-          </div>
-        )}
-
-        {activeKey && status === "connecting" && (
-          <div className="search-connecting">
-            <span className="search-spinner" aria-hidden />
-            <p className="hs-events-loading muted">
-              Opening event stream (up to {SEARCH_EVENTS_LIMIT} historical
-              events)…
-            </p>
-          </div>
-        )}
-
-        {events.length > 0 && (
-          <div className="search-events-layout">
-            <div className="hs-events-records search-events-records">
-              <Table className="table-fixed border-collapse text-xs">
-                <TableHeader>
-                  <TableRow className="border-0 hover:bg-transparent">
-                    <TableHead className="sticky top-0 z-[1] h-auto w-[15%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
-                      Cursor
-                    </TableHead>
-                    <TableHead className="sticky top-0 z-[1] h-auto w-[8%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
-                      Type
-                    </TableHead>
-                    <TableHead className="sticky top-0 z-[1] h-auto w-[7%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
-                      Scope
-                    </TableHead>
-                    <TableHead className="sticky top-0 z-[1] h-auto w-[45%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
-                      Path
-                    </TableHead>
-                    <TableHead className="sticky top-0 z-[1] h-auto w-[25%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
-                      Hash
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr:last-child_td]:border-b-0">
-                  {events.map((event, index) => {
-                    if (!matchesScope(event)) return null;
-                    const isPriv = event.scope === "priv";
-                    const selected = selectedIndex === index;
-                    return (
-                      <TableRow
-                        key={`${event.cursor}-${index}`}
-                        className={`search-row-clickable border-0 hover:bg-transparent${isPriv ? " search-row-priv" : ""}${selected ? " search-row-selected" : ""}`}
-                        onClick={() => selectEvent(index, event)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            selectEvent(index, event);
-                          }
-                        }}
-                      >
-                        <TableCell
-                          className="hs-events-time w-[15%] border-b border-white/[0.06] px-2.5 py-2 align-top"
-                          title={event.cursor}
-                        >
-                          {event.cursor ?? "—"}
-                        </TableCell>
-                        <TableCell className="hs-events-type w-[8%] border-b border-white/[0.06] px-2.5 py-2 align-top">
-                          <span
-                            className={`hs-events-type-badge ${event.eventType === "PUT" ? "put" : "del"}`}
-                          >
-                            {event.eventType}
-                          </span>
-                        </TableCell>
-                        <TableCell className="hs-events-scope w-[7%] border-b border-white/[0.06] px-2.5 py-2 align-top">
-                          {isPriv ? (
-                            <span className="search-priv-badge">priv</span>
-                          ) : (
-                            <span className="search-pub-badge">pub</span>
-                          )}
-                        </TableCell>
-                        <TableCell
-                          className="hs-events-path w-[45%] border-b border-white/[0.06] px-2.5 py-2 align-top"
-                          title={event.uri}
-                        >
-                          {shortPath(event.path)}
-                        </TableCell>
-                        <TableCell
-                          className="hs-events-hash w-[25%] border-b border-white/[0.06] px-2.5 py-2 align-top"
-                          title={event.contentHash ?? undefined}
-                        >
-                          {event.contentHash ? event.contentHash : "—"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-          </div>
-        )}
-
-        {selectedEvent && selectedIndex !== null && (
-          <div
-            className="search-modal-backdrop"
-            onClick={() => setSelectedIndex(null)}
-          >
-            <div
-              className="search-modal"
-              role="dialog"
-              aria-modal="true"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <EventDetailPanel
-                event={selectedEvent}
-                rowIndex={selectedIndex}
-                content={contentByRow[selectedIndex]}
-                privRefs={privRefsByRow[selectedIndex] ?? []}
-                session={session}
-                sessionUserZ32={sessionUserZ32}
-                privContentByRow={privContentByRow}
-                onResolve={resolvePrivRefs}
-                onClose={() => setSelectedIndex(null)}
-              />
-            </div>
-          </div>
-        )}
-
-        {activeKey &&
-          status === "streaming" &&
-          events.length === 0 &&
-          !error && (
-            <p className="muted hs-events-empty">No events for this key yet.</p>
           )}
+
+          {activeKey && status === "connecting" && (
+            <div className="search-connecting">
+              <span className="search-spinner" aria-hidden />
+              <p className="hs-events-loading muted">
+                Opening event stream (up to {SEARCH_EVENTS_LIMIT} historical
+                events)…
+              </p>
+            </div>
+          )}
+
+          {visibleEvents.length > 0 && (
+            <div className="search-events-layout">
+              <div className="hs-events-records search-events-records">
+                <Table className="table-fixed border-collapse text-xs">
+                  <TableHeader>
+                    <TableRow className="border-0 hover:bg-transparent">
+                      <TableHead className="sticky top-0 z-[1] h-auto w-[15%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                        Cursor
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-[1] h-auto w-[8%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                        Type
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-[1] h-auto w-[7%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                        Scope
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-[1] h-auto w-[45%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                        Path
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-[1] h-auto w-[25%] border-b border-white/[0.06] bg-[rgba(20,20,22,0.92)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-white/45 backdrop-blur-sm">
+                        Hash
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="[&_tr:last-child_td]:border-b-0">
+                    {visibleEvents.map((event) => {
+                      const isPriv = event.scope === "priv";
+                      const isSelected = selected?.cursor === event.cursor;
+                      return (
+                        <TableRow
+                          key={event.cursor}
+                          className={`search-row-clickable border-0 hover:bg-transparent${isPriv ? " search-row-priv" : ""}${isSelected ? " search-row-selected" : ""}`}
+                          onClick={() => selectEvent(event)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              selectEvent(event);
+                            }
+                          }}
+                        >
+                          <TableCell
+                            className="hs-events-time w-[15%] border-b border-white/[0.06] px-2.5 py-2 align-top"
+                            title={event.cursor}
+                          >
+                            {event.cursor ?? "—"}
+                          </TableCell>
+                          <TableCell className="hs-events-type w-[8%] border-b border-white/[0.06] px-2.5 py-2 align-top">
+                            <span
+                              className={`hs-events-type-badge ${event.eventType === "PUT" ? "put" : "del"}`}
+                            >
+                              {event.eventType}
+                            </span>
+                          </TableCell>
+                          <TableCell className="hs-events-scope w-[7%] border-b border-white/[0.06] px-2.5 py-2 align-top">
+                            {isPriv ? (
+                              <span className="search-priv-badge">priv</span>
+                            ) : (
+                              <span className="search-pub-badge">pub</span>
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className="hs-events-path w-[45%] border-b border-white/[0.06] px-2.5 py-2 align-top"
+                            title={event.uri}
+                          >
+                            {shortPath(event.path)}
+                          </TableCell>
+                          <TableCell
+                            className="hs-events-hash w-[25%] border-b border-white/[0.06] px-2.5 py-2 align-top"
+                            title={event.contentHash ?? undefined}
+                          >
+                            {event.contentHash ?? "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {selected && (
+            <div className="search-modal-backdrop" onClick={closeDetail}>
+              <div
+                className="search-modal"
+                role="dialog"
+                aria-modal="true"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <EventDetailPanel
+                  key={selected.cursor}
+                  event={selected}
+                  content={content}
+                  privRefs={privRefs}
+                  session={session}
+                  sessionUserZ32={sessionUserZ32}
+                  onClose={closeDetail}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeKey &&
+            status === "streaming" &&
+            events.length === 0 &&
+            !error && (
+              <p className="muted hs-events-empty">
+                No events for this key yet.
+              </p>
+            )}
         </div>
       )}
     </div>

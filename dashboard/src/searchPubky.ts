@@ -3,7 +3,6 @@ import {
   Pubky,
   PublicKey,
   type Event,
-  type Address,
   type Session,
 } from "@synonymdev/pubky";
 import type { EventContentResult } from "./pubky";
@@ -244,34 +243,39 @@ async function loadSessionPathContent(
       body,
     };
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Failed to load content";
-    if (message.includes("404") || message.toLowerCase().includes("not found")) {
-      return { ok: false, error: "Content no longer exists (deleted)" };
-    }
-    return { ok: false, error: message };
+    return toContentError(e);
   }
 }
 
-async function loadPublicContent(
-  address: Address
+/** Homeserver GET with cache disabled — every call hits the network. */
+async function fetchPathNoStore(
+  ownerZ32: string,
+  path: string
 ): Promise<EventContentResult> {
+  const url = new URL(`https://_pubky.${ownerZ32}${path}`);
+  url.searchParams.set("_ts", String(Date.now()));
   try {
-    const [body, stats] = await Promise.all([
-      pubky.publicStorage.getText(address),
-      pubky.publicStorage.stats(address),
-    ]);
-    return {
-      ok: true,
-      contentType: stats?.contentType,
-      body,
-    };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Failed to load content";
-    if (message.includes("404") || message.toLowerCase().includes("not found")) {
+    const res = await pubky.client.fetch(url.toString(), { cache: "no-store" });
+    if (res.status === 404) {
       return { ok: false, error: "Content no longer exists (deleted)" };
     }
-    return { ok: false, error: message };
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return {
+      ok: true,
+      contentType: res.headers.get("content-type") ?? undefined,
+      body: await res.text(),
+    };
+  } catch (e) {
+    return toContentError(e);
   }
+}
+
+function toContentError(e: unknown): EventContentResult {
+  const message = e instanceof Error ? e.message : "Failed to load content";
+  if (message.includes("404") || message.toLowerCase().includes("not found")) {
+    return { ok: false, error: "Content no longer exists (deleted)" };
+  }
+  return { ok: false, error: message };
 }
 
 /**
@@ -332,5 +336,5 @@ export async function loadSearchEventContent(
     return loadSessionPathContent(session, event.path);
   }
 
-  return loadPublicContent(event.uri as Address);
+  return fetchPathNoStore(event.ownerZ32, event.path);
 }

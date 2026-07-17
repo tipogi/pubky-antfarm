@@ -103,6 +103,3 @@ export async function resolvePrivRef(
   }
 }
 
-export function privContentKey(rowIndex: number, path: string): string {
-  return `${rowIndex}:${path}`;
-}
